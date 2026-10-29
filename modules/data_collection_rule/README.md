@@ -96,7 +96,7 @@ The following input variables are optional (have default values):
 
 ### <a name="input_data_sources"></a> [data\_sources](#input\_data\_sources)
 
-Description: Data sources the Azure Monitor Agent collects, each a map keyed by data source name. Names must be unique across all kinds. Defaults to none (a rule for direct ingestion).
+Description: Data sources the Azure Monitor Agent collects, each a map keyed by data source name. Names must be unique across all kinds. Defaults to none. Rules for the Logs Ingestion API (stream declarations, data collection endpoints) are not supported yet.
 
 - `performance_counters` - Performance counters.
   - `streams` - Streams to send the counters to, for example `["Microsoft-Perf"]`.

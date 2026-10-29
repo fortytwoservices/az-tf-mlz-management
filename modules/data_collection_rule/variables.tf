@@ -99,7 +99,7 @@ variable "data_sources" {
   })
   default     = {}
   description = <<DESCRIPTION
-Data sources the Azure Monitor Agent collects, each a map keyed by data source name. Names must be unique across all kinds. Defaults to none (a rule for direct ingestion).
+Data sources the Azure Monitor Agent collects, each a map keyed by data source name. Names must be unique across all kinds. Defaults to none. Rules for the Logs Ingestion API (stream declarations, data collection endpoints) are not supported yet.
 
 - `performance_counters` - Performance counters.
   - `streams` - Streams to send the counters to, for example `["Microsoft-Perf"]`.
