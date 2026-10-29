@@ -5,8 +5,8 @@
 The management resources of an Azure landing zone: a resource group, then a Log Analytics workspace that
 sends its own audit logs and metrics to itself, the three data collection rules the ALZ policies take
 (change tracking, VM insights with processes and dependencies, Defender for SQL) and the Azure Monitor
-Agent's user-assigned identity, all under one `CanNotDelete` lock. The output gives the values
-`avm-ptn-alz`'s `policy_default_values` take.
+Agent's user-assigned identity, all under one `CanNotDelete` lock. The `policy_default_values` output is
+`avm-ptn-alz`'s input of that name, ready to pass (each value `jsonencode({ value = ... })`).
 
 Run it with `scripts/e2e.sh examples/default`: apply, a second plan that must be empty, destroy. The
 destroyed workspace stays soft-deleted for 14 days; every run uses new names.
@@ -45,7 +45,7 @@ The following outputs are exported:
 
 ### <a name="output_policy_default_values"></a> [policy\_default\_values](#output\_policy\_default\_values)
 
-Description: The management resources, under the names `avm-ptn-alz`'s `policy_default_values` use.
+Description: The management resources as `avm-ptn-alz`'s `policy_default_values`: by default name, each value `jsonencode({ value = ... })`.
 
 ### <a name="output_workspace_id"></a> [workspace\_id](#output\_workspace\_id)
 

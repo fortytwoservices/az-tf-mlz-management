@@ -41,7 +41,8 @@ module "management" {
 
 The outputs give what `avm-ptn-alz`'s `policy_default_values` take: `resource_id`
 (`log_analytics_workspace_id`), `data_collection_rule_resource_ids` (`change_tracking`, `vm_insights`,
-`defender_sql`) and `user_assigned_identity` (`resource_id`, `name`).
+`defender_sql`) and `user_assigned_identity` (`resource_id`, `name`). That input takes each value as
+`jsonencode({ value = ... })`; `examples/default` builds the map.
 
 Not created: the resource group, an automation account and its linked service (Azure Update Manager and
 change tracking with the Azure Monitor Agent need none), other legacy solutions (VM insights with the
