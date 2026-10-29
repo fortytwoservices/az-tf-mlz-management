@@ -19,7 +19,7 @@ variables {
       subPlan     = "P2"
       extensions = [
         { name = "AgentlessVmScanning", isEnabled = "True", additionalExtensionProperties = { ExclusionTags = "[]" } },
-        { name = "MdeDesignatedSubscription", isEnabled = "False", additionalExtensionProperties = null },
+        { name = "MdeDesignatedSubscription", isEnabled = "False" },
       ]
     }
   }
@@ -80,7 +80,7 @@ run "sub_plan_and_extensions" {
 
   assert {
     condition     = jsonencode(azapi_update_resource.this.body) == jsonencode(var.expected_full_body)
-    error_message = "The sub-plan and the extensions, in key order with isEnabled as a string, should be sent."
+    error_message = "The sub-plan and the extensions, in key order with isEnabled as a string and without unset additional properties, should be sent."
   }
 }
 

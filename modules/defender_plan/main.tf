@@ -6,19 +6,18 @@ resource "azapi_update_resource" "this" {
   type      = var.resource_types.security_pricings
   name      = var.name
   parent_id = var.parent_id
-  # Azure fills in a sub-plan and the plan's extensions itself, so an unset sub-plan and unlisted extensions
-  # are left out rather than sent as null, which would plan a change on every run (Copilot, PR #3): Azure's
-  # values stand. Listed extensions are matched by name, and the ones Azure adds are ignored.
+  # Azure fills in a sub-plan, the plan's extensions and their additional properties itself, so whatever is
+  # unset is left out rather than sent as null, which would plan a change on every run (Copilot, PR #3):
+  # Azure's values stand. Listed extensions are matched by name, and the ones Azure adds are ignored.
   body = {
     properties = merge(
       { pricingTier = var.tier },
       var.sub_plan == null ? null : { subPlan = var.sub_plan },
       length(var.extensions) == 0 ? null : {
-        extensions = [for name, extension in var.extensions : {
-          name                          = name
-          isEnabled                     = extension.enabled ? "True" : "False"
-          additionalExtensionProperties = extension.additional_properties
-        }]
+        extensions = [for name, extension in var.extensions : merge(
+          { name = name, isEnabled = extension.enabled ? "True" : "False" },
+          extension.additional_properties == null ? null : { additionalExtensionProperties = extension.additional_properties },
+        )]
       },
     )
   }

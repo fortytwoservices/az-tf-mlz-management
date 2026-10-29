@@ -65,7 +65,7 @@ Description: Extensions of the plan, keyed by extension name, for example `Agent
 map, stay as Azure has them. Defaults to none.
 
 - `enabled` - Whether the extension is on.
-- `additional_properties` - (Optional) The extension's additional properties, for example `{ ExclusionTags = "[]" }`.
+- `additional_properties` - (Optional) The extension's additional properties, for example `{ ExclusionTags = "[]" }`. Unset, Azure's stand.
 
 Type:
 
