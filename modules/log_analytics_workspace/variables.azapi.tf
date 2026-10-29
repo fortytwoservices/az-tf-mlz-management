@@ -5,6 +5,10 @@ variable "ignore_body_changes" {
     authorization_role_assignments = optional(list(string), [])
     insights_diagnostic_settings   = optional(list(string), [])
     operationsmanagement_solutions = optional(list(string), [])
+
+    securityinsights_onboarding_states = optional(object({
+      securityinsights_onboarding_states = optional(list(string), [])
+    }), {})
   })
   default     = {}
   description = <<DESCRIPTION
@@ -17,6 +21,7 @@ Paths use dot notation, for example `properties.retentionInDays`. Individual lis
 - `authorization_role_assignments` - Ignored body paths for the role assignments.
 - `insights_diagnostic_settings` - Ignored body paths for the diagnostic settings.
 - `operationsmanagement_solutions` - Ignored body paths for the solutions.
+- `securityinsights_onboarding_states` - Slot for `modules/sentinel_onboarding`.
 DESCRIPTION
   nullable    = false
 }
@@ -28,6 +33,10 @@ variable "resource_types" {
     authorization_role_assignments = optional(string, "Microsoft.Authorization/roleAssignments@2022-04-01")
     insights_diagnostic_settings   = optional(string, "Microsoft.Insights/diagnosticSettings@2021-05-01-preview")
     operationsmanagement_solutions = optional(string, "Microsoft.OperationsManagement/solutions@2015-11-01-preview")
+
+    securityinsights_onboarding_states = optional(object({
+      securityinsights_onboarding_states = optional(string)
+    }), {})
   })
   default     = {}
   description = <<DESCRIPTION
@@ -38,6 +47,7 @@ Override the AzAPI `<provider>/<resource>@<api-version>` strings used by this mo
 - `authorization_role_assignments` - Role assignments on the workspace.
 - `insights_diagnostic_settings` - Diagnostic settings on the workspace.
 - `operationsmanagement_solutions` - The solutions on the workspace (the only version azapi 2.12 embeds).
+- `securityinsights_onboarding_states` - Slot for `modules/sentinel_onboarding`. Defaults live in the submodule.
 DESCRIPTION
   nullable    = false
 }

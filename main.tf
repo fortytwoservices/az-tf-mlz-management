@@ -11,6 +11,7 @@ module "log_analytics_workspace" {
   public_network_access_for_query     = var.public_network_access_for_query
   resource_permissions_enabled        = var.resource_permissions_enabled
   retention_in_days                   = var.retention_in_days
+  sentinel_onboarding                 = var.sentinel_onboarding
   solutions                           = local.solutions
   lock                                = var.lock
   role_assignments                    = var.role_assignments

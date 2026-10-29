@@ -140,6 +140,7 @@ Paths use dot notation, for example `properties.retentionInDays`. Individual lis
 - `authorization_role_assignments` - Ignored body paths for the role assignments.
 - `insights_diagnostic_settings` - Ignored body paths for the diagnostic settings.
 - `operationsmanagement_solutions` - Ignored body paths for the solutions.
+- `securityinsights_onboarding_states` - Slot for `modules/sentinel_onboarding`.
 
 Type:
 
@@ -150,6 +151,10 @@ object({
     authorization_role_assignments = optional(list(string), [])
     insights_diagnostic_settings   = optional(list(string), [])
     operationsmanagement_solutions = optional(list(string), [])
+
+    securityinsights_onboarding_states = optional(object({
+      securityinsights_onboarding_states = optional(list(string), [])
+    }), {})
   })
 ```
 
@@ -224,6 +229,7 @@ Description: Override the AzAPI `<provider>/<resource>@<api-version>` strings us
 - `authorization_role_assignments` - Role assignments on the workspace.
 - `insights_diagnostic_settings` - Diagnostic settings on the workspace.
 - `operationsmanagement_solutions` - The solutions on the workspace (the only version azapi 2.12 embeds).
+- `securityinsights_onboarding_states` - Slot for `modules/sentinel_onboarding`. Defaults live in the submodule.
 
 Type:
 
@@ -234,6 +240,10 @@ object({
     authorization_role_assignments = optional(string, "Microsoft.Authorization/roleAssignments@2022-04-01")
     insights_diagnostic_settings   = optional(string, "Microsoft.Insights/diagnosticSettings@2021-05-01-preview")
     operationsmanagement_solutions = optional(string, "Microsoft.OperationsManagement/solutions@2015-11-01-preview")
+
+    securityinsights_onboarding_states = optional(object({
+      securityinsights_onboarding_states = optional(string)
+    }), {})
   })
 ```
 
@@ -303,6 +313,24 @@ map(object({
 
 Default: `{}`
 
+### <a name="input_sentinel_onboarding"></a> [sentinel\_onboarding](#input\_sentinel\_onboarding)
+
+Description: (Optional) Onboards Microsoft Sentinel on the workspace; `{}` onboards it with the defaults. Sentinel bills  
+the data it analyses. Not tested in Azure: released without a sandbox test by decision, its first test is  
+the first customer deployment. Defaults to `null`, not onboarded; setting it back to `null` offboards it.
+
+- `customer_managed_key_enabled` - (Optional) Use the customer-managed key of the workspace's dedicated cluster. Defaults to `false`; set it at onboarding.
+
+Type:
+
+```hcl
+object({
+    customer_managed_key_enabled = optional(bool, false)
+  })
+```
+
+Default: `null`
+
 ### <a name="input_solutions"></a> [solutions](#input\_solutions)
 
 Description: Legacy solutions to add to the workspace, by Microsoft gallery product name, for example `ChangeTracking` (`OMSGallery/ChangeTracking`). Some data collection rules need the tables a solution adds: `ChangeTracking` for change tracking, `SQLAdvancedThreatProtection` and `SQLVulnerabilityAssessment` for Defender for SQL. Defaults to none.
@@ -365,6 +393,10 @@ Description: Resource ID of the Log Analytics workspace, known once its solution
 
 Description: Resource IDs of the role assignments on the workspace, by key.
 
+### <a name="output_sentinel_onboarding_resource_id"></a> [sentinel\_onboarding\_resource\_id](#output\_sentinel\_onboarding\_resource\_id)
+
+Description: Resource ID of the Microsoft Sentinel onboarding state; null when Sentinel is not onboarded.
+
 ### <a name="output_solution_resource_ids"></a> [solution\_resource\_ids](#output\_solution\_resource\_ids)
 
 Description: Resource IDs of the solutions on the workspace, by product name.
@@ -382,5 +414,11 @@ The following Modules are called:
 Source: git::https://github.com/fortytwoservices/az-tf-mlz-interfaces.git
 
 Version: v0.1.1
+
+### <a name="module_sentinel_onboarding"></a> [sentinel\_onboarding](#module\_sentinel\_onboarding)
+
+Source: ../sentinel_onboarding
+
+Version:
 
 <!-- END_TF_DOCS -->

@@ -94,6 +94,20 @@ variable "retention_in_days" {
   }
 }
 
+variable "sentinel_onboarding" {
+  type = object({
+    customer_managed_key_enabled = optional(bool, false)
+  })
+  default     = null
+  description = <<DESCRIPTION
+(Optional) Onboards Microsoft Sentinel on the workspace; `{}` onboards it with the defaults. Sentinel bills
+the data it analyses. Not tested in Azure: released without a sandbox test by decision, its first test is
+the first customer deployment. Defaults to `null`, not onboarded; setting it back to `null` offboards it.
+
+- `customer_managed_key_enabled` - (Optional) Use the customer-managed key of the workspace's dedicated cluster. Defaults to `false`; set it at onboarding.
+DESCRIPTION
+}
+
 variable "solutions" {
   type        = set(string)
   default     = []

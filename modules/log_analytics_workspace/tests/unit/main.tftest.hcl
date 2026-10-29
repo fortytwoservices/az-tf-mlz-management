@@ -71,6 +71,10 @@ run "defaults" {
     error_message = "No lock, role assignment, diagnostic setting or solution should be created by default."
   }
   assert {
+    condition     = length(module.sentinel_onboarding) == 0 && output.sentinel_onboarding_resource_id == null
+    error_message = "Sentinel should not be onboarded by default."
+  }
+  assert {
     condition     = output.resource_id == azapi_resource.this.id && output.name == var.name
     error_message = "resource_id and name should come from the workspace."
   }
@@ -156,6 +160,24 @@ run "solutions" {
   }
 }
 
+run "sentinel_onboarding" {
+  command = apply
+
+  variables {
+    sentinel_onboarding = {}
+    lock                = { kind = "CanNotDelete" }
+  }
+
+  assert {
+    condition     = length(module.sentinel_onboarding) == 1 && module.sentinel_onboarding[0].name == "default"
+    error_message = "Sentinel should be onboarded on the workspace, as the onboarding state default."
+  }
+  assert {
+    condition     = output.sentinel_onboarding_resource_id == module.sentinel_onboarding[0].resource_id
+    error_message = "The onboarding state's ID should be output."
+  }
+}
+
 run "interfaces" {
   command = apply
 
@@ -196,14 +218,21 @@ run "azapi_settings_reach_every_resource" {
       authorization_role_assignments = "Microsoft.Authorization/roleAssignments@2020-04-01-preview"
       insights_diagnostic_settings   = "Microsoft.Insights/diagnosticSettings@2021-05-01-preview"
       operationsmanagement_solutions = "Microsoft.OperationsManagement/solutions@2015-11-01-preview"
+      securityinsights_onboarding_states = {
+        securityinsights_onboarding_states = "Microsoft.SecurityInsights/onboardingStates@2024-09-01"
+      }
     }
-    solutions = ["ChangeTracking"]
+    sentinel_onboarding = { customer_managed_key_enabled = true }
+    solutions           = ["ChangeTracking"]
     ignore_body_changes = {
       operationalinsights_workspaces = ["properties.retentionInDays"]
       authorization_locks            = ["properties.notes"]
       authorization_role_assignments = ["properties.description"]
       insights_diagnostic_settings   = ["properties.logs"]
       operationsmanagement_solutions = ["plan.promotionCode"]
+      securityinsights_onboarding_states = {
+        securityinsights_onboarding_states = ["properties.customerManagedKey"]
+      }
     }
     retry = {
       error_message_regex = ["AnotherOperationInProgress"]

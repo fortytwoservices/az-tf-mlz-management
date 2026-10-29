@@ -13,6 +13,11 @@ mock_provider "azapi" {
       }
     }
   }
+  mock_resource "azapi_update_resource" {
+    defaults = {
+      id = "/subscriptions/00000000-0000-0000-0000-000000000000/providers/Microsoft.Security/pricings/VirtualMachines"
+    }
+  }
   mock_data "azapi_resource_list" {
     defaults = {
       output = {
@@ -53,6 +58,10 @@ run "defaults" {
   assert {
     condition     = length(module.user_assigned_identity) == 0 && output.user_assigned_identity == null
     error_message = "No identity should be created by default."
+  }
+  assert {
+    condition     = output.sentinel_onboarding_resource_id == null && length(module.defender_plan) == 0 && length(output.defender_plan_resource_ids) == 0
+    error_message = "Neither Sentinel nor a Defender plan should be set by default."
   }
   assert {
     condition     = module.log_analytics_workspace.lock_resource_id == null && length(module.log_analytics_workspace.role_assignment_resource_ids) + length(module.log_analytics_workspace.diagnostic_setting_resource_ids) + length(module.log_analytics_workspace.solution_resource_ids) == 0
@@ -236,6 +245,69 @@ run "defender_sql_queries_off_by_default" {
   }
 }
 
+run "sentinel_onboarding" {
+  command = apply
+
+  variables {
+    sentinel_onboarding = { customer_managed_key_enabled = true }
+  }
+
+  assert {
+    condition     = output.sentinel_onboarding_resource_id != null && output.sentinel_onboarding_resource_id == module.log_analytics_workspace.sentinel_onboarding_resource_id
+    error_message = "Sentinel should be onboarded through the workspace submodule, and its ID output."
+  }
+}
+
+run "defender_plans" {
+  command = apply
+
+  variables {
+    defender_plans = {
+      management-servers = {
+        subscription_id = "/subscriptions/00000000-0000-0000-0000-000000000000"
+        plan            = "VirtualMachines"
+        sub_plan        = "P2"
+        extensions      = { AgentlessVmScanning = { enabled = true } }
+      }
+      connectivity-cspm = {
+        subscription_id = "/subscriptions/11111111-1111-1111-1111-111111111111"
+        plan            = "CloudPosture"
+      }
+      management-storage-off = {
+        subscription_id = "/subscriptions/00000000-0000-0000-0000-000000000000"
+        plan            = "StorageAccounts"
+        tier            = "Free"
+      }
+    }
+  }
+
+  assert {
+    condition     = jsonencode(keys(module.defender_plan)) == jsonencode(["connectivity-cspm", "management-servers", "management-storage-off"])
+    error_message = "One plan should be set per entry."
+  }
+  assert {
+    condition     = module.defender_plan["management-servers"].name == "VirtualMachines" && module.defender_plan["connectivity-cspm"].name == "CloudPosture"
+    error_message = "Each entry should set its plan."
+  }
+  assert {
+    condition     = jsonencode(keys(output.defender_plan_resource_ids)) == jsonencode(["connectivity-cspm", "management-servers", "management-storage-off"])
+    error_message = "Plan IDs should be output by key."
+  }
+}
+
+run "duplicate_defender_plan" {
+  command = plan
+
+  variables {
+    defender_plans = {
+      one = { subscription_id = "/subscriptions/00000000-0000-0000-0000-000000000000", plan = "KeyVaults" }
+      two = { subscription_id = "/subscriptions/00000000-0000-0000-0000-000000000000", plan = "keyvaults" }
+    }
+  }
+
+  expect_failures = [var.defender_plans]
+}
+
 run "interfaces" {
   command = apply
 
@@ -286,6 +358,10 @@ run "azapi_settings_are_accepted" {
       operationalinsights_workspaces           = { operationalinsights_workspaces = "Microsoft.OperationalInsights/workspaces@2025-02-01" }
       insights_data_collection_rules           = { insights_data_collection_rules = "Microsoft.Insights/dataCollectionRules@2023-03-11" }
       managedidentity_user_assigned_identities = { managedidentity_user_assigned_identities = "Microsoft.ManagedIdentity/userAssignedIdentities@2025-05-31-preview" }
+      security_pricings                        = { security_pricings = "Microsoft.Security/pricings@2023-01-01" }
+    }
+    defender_plans = {
+      kv = { subscription_id = "/subscriptions/00000000-0000-0000-0000-000000000000", plan = "KeyVaults" }
     }
     ignore_body_changes = {
       operationalinsights_workspaces           = { operationalinsights_workspaces = ["properties.retentionInDays"] }
@@ -297,7 +373,7 @@ run "azapi_settings_are_accepted" {
   }
 
   assert {
-    condition     = length(module.data_collection_rule) == 1 && length(module.user_assigned_identity) == 1
+    condition     = length(module.data_collection_rule) == 1 && length(module.user_assigned_identity) == 1 && length(module.defender_plan) == 1
     error_message = "The overrides should be accepted by every submodule."
   }
 }

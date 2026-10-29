@@ -9,8 +9,12 @@ module "interfaces" {
   lock                             = var.lock
   role_assignments                 = var.role_assignments
   diagnostic_settings              = var.diagnostic_settings
-  # A solution writes to the workspace, so the lock is removed around changes to one.
-  lock_dependencies   = { for product, solution in azapi_resource.solution : "solution/${product}" => sha256(jsonencode([solution.id, solution.body, solution.tags])) }
+  # A solution writes to the workspace, and the lock covers the Sentinel onboarding state (an extension
+  # resource under it), so the lock is removed around changes to either.
+  lock_dependencies = merge(
+    { for product, solution in azapi_resource.solution : "solution/${product}" => sha256(jsonencode([solution.id, solution.body, solution.tags])) },
+    { for index, onboarding in module.sentinel_onboarding : "sentinel/${index}" => onboarding.lock_dependency },
+  )
   resource_types      = var.resource_types # its interface keys are read
   ignore_body_changes = var.ignore_body_changes
   retry               = var.retry

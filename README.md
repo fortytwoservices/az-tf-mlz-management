@@ -37,7 +37,17 @@ module "management" {
   Windows and Linux; VM insights performance counters, with processes and dependencies (the Map) only when
   `processes_and_dependencies_enabled` is set; Microsoft Defender for SQL on machines.
 - **The identity** (`modules/user_assigned_identity`), when named.
-- **The lock** goes on every resource the module creates.
+- **The lock** goes on the workspace (which covers its Sentinel onboarding), the rules and the identity.
+- **Microsoft Sentinel** (`modules/sentinel_onboarding`), when `sentinel_onboarding` is set: onboarded on
+  the workspace. Sentinel bills the data it analyses.
+- **Microsoft Defender for Cloud plans** (`modules/defender_plan`), one per entry of `defender_plans`, on
+  any subscription: `tier = "Free"` turns a plan off, and removing an entry leaves Azure as it is (a
+  subscription's plans always exist). With the ALZ policies, give each plan one owner: this, or
+  `Deploy-MDFC-Config-H224`'s `enableAscFor*` parameters.
+
+**Sentinel and the Defender plans are not tested in Azure.** By decision they are released without a
+sandbox test (a plan bills every protected resource of a subscription), and the first customer deployment
+is their first test; only their bodies are checked, against the AzAPI provider's schema.
 
 The outputs give what `avm-ptn-alz`'s `policy_default_values` take: `resource_id`
 (`log_analytics_workspace_id`), `data_collection_rule_resource_ids` (`change_tracking`, `vm_insights`,
@@ -46,7 +56,8 @@ The outputs give what `avm-ptn-alz`'s `policy_default_values` take: `resource_id
 
 Not created: the resource group, an automation account and its linked service (Azure Update Manager and
 change tracking with the Azure Monitor Agent need none), other legacy solutions (VM insights with the
-Azure Monitor Agent needs none, the Map included), Microsoft Sentinel and Defender for Cloud plans. Associations between machines
+Azure Monitor Agent needs none, the Map included), Sentinel's data connectors and analytics rules, and
+Defender for Cloud's security contacts and continuous export (the ALZ policies set those). Associations between machines
 and the rules are left to the ALZ policies.
 
 ## Behaviour to know
@@ -142,6 +153,38 @@ object({
 
 Default: `{}`
 
+### <a name="input_defender_plans"></a> [defender\_plans](#input\_defender\_plans)
+
+Description: Microsoft Defender for Cloud plans, keyed by a stable name of your choice, each on one subscription. A  
+subscription's plans always exist: `tier = "Free"` turns one off, and removing an entry leaves Azure as it  
+is (turn it off first). A Standard plan bills every protected resource in its subscription. With the Azure  
+landing zone policies, give each plan one owner: this, or `Deploy-MDFC-Config-H224`'s `enableAscFor*`.  
+Not tested in Azure: released without a sandbox test by decision, its first test is the first customer  
+deployment. Defaults to none.
+
+- `subscription_id` - Resource ID of the subscription, `/subscriptions/<id>`.
+- `plan` - Defender plan (pricing) name, for example `VirtualMachines`, `SqlServers`, `StorageAccounts`, `KeyVaults`, `Containers`, `CloudPosture`.
+- `tier` - (Optional) `Standard` (on, default) or `Free` (off).
+- `sub_plan` - (Optional) Sub-plan of a Standard plan, for example `P1` or `P2` for `VirtualMachines`.
+- `extensions` - (Optional) Extensions of the plan, keyed by extension name, each `{ enabled, additional_properties }`.
+
+Type:
+
+```hcl
+map(object({
+    subscription_id = string
+    plan            = string
+    tier            = optional(string, "Standard")
+    sub_plan        = optional(string)
+    extensions = optional(map(object({
+      enabled               = bool
+      additional_properties = optional(map(string))
+    })), {})
+  }))
+```
+
+Default: `{}`
+
 ### <a name="input_diagnostic_settings"></a> [diagnostic\_settings](#input\_diagnostic\_settings)
 
 Description: A map of diagnostic settings to create on the Log Analytics workspace. The map key is deliberately arbitrary to avoid issues where map keys maybe unknown at plan time.
@@ -204,7 +247,7 @@ Description: Paths in each resource's `body` whose changes the AzAPI provider ig
 
 Paths use dot notation, for example `properties.retentionInDays`. Individual list items cannot be targeted; ignore the whole list property instead. Configuration changes at an ignored path are **not** sent to Azure until that path is removed from the list. Changes take effect only after an apply, because the value is held in provider-private state.
 
-- `operationalinsights_workspaces` - Slot for `modules/log_analytics_workspace`: its `operationalinsights_workspaces`, `authorization_locks`, `authorization_role_assignments`, `insights_diagnostic_settings` and `operationsmanagement_solutions`.
+- `operationalinsights_workspaces` - Slot for `modules/log_analytics_workspace`: its `operationalinsights_workspaces`, `authorization_locks`, `authorization_role_assignments`, `insights_diagnostic_settings`, `operationsmanagement_solutions`, and its slot for `modules/sentinel_onboarding` (`securityinsights_onboarding_states`). Defender plans have none: they are updated in place (`azapi_update_resource`), which has no `ignore_body_changes`.
 - `insights_data_collection_rules` - Slot for `modules/data_collection_rule`, applied to every rule: its `insights_data_collection_rules`, `authorization_locks`, `authorization_role_assignments` and `insights_diagnostic_settings`.
 - `managedidentity_user_assigned_identities` - Slot for `modules/user_assigned_identity`: its `managedidentity_user_assigned_identities`, `authorization_locks` and `authorization_role_assignments`.
 
@@ -218,6 +261,9 @@ object({
       authorization_role_assignments = optional(list(string), [])
       insights_diagnostic_settings   = optional(list(string), [])
       operationsmanagement_solutions = optional(list(string), [])
+      securityinsights_onboarding_states = optional(object({
+        securityinsights_onboarding_states = optional(list(string), [])
+      }), {})
     }), {})
     insights_data_collection_rules = optional(object({
       insights_data_collection_rules = optional(list(string), [])
@@ -245,7 +291,7 @@ Default: `false`
 
 ### <a name="input_lock"></a> [lock](#input\_lock)
 
-Description: A lock on every resource the module creates: the workspace, the data collection rules and the identity. The ALZ policies refer to all of them. The following properties can be specified:
+Description: A lock on the resources the module creates in the resource group: the workspace (which covers its Sentinel onboarding), the data collection rules and the identity. The ALZ policies refer to all of them. Defender plans are not locked: a lock at subscription scope would lock the subscription. The following properties can be specified:
 
 - `kind` - (Required) The type of lock. Possible values are `\"CanNotDelete\"` and `\"ReadOnly\"`.
 - `name` - (Optional) The name of the lock. If not specified, a name will be generated based on the `kind` value. Changing this forces the creation of a new resource.
@@ -299,9 +345,10 @@ Default: `true`
 
 Description: Override the AzAPI `<provider>/<resource>@<api-version>` strings used by the submodules. Each key defaults to a tested value in its submodule; supply only the keys you want to override.
 
-- `operationalinsights_workspaces` - Slot for `modules/log_analytics_workspace` (default `Microsoft.OperationalInsights/workspaces@2025-07-01`), with its lock, role assignment, diagnostic setting and solution types.
+- `operationalinsights_workspaces` - Slot for `modules/log_analytics_workspace` (default `Microsoft.OperationalInsights/workspaces@2025-07-01`), with its lock, role assignment, diagnostic setting and solution types, and its slot for `modules/sentinel_onboarding` (`securityinsights_onboarding_states`, default `Microsoft.SecurityInsights/onboardingStates@2025-09-01`).
 - `insights_data_collection_rules` - Slot for `modules/data_collection_rule` (default `Microsoft.Insights/dataCollectionRules@2024-03-11`), with its lock, role assignment and diagnostic setting types.
 - `managedidentity_user_assigned_identities` - Slot for `modules/user_assigned_identity` (default `Microsoft.ManagedIdentity/userAssignedIdentities@2024-11-30`), with its lock and role assignment types.
+- `security_pricings` - Slot for `modules/defender_plan` (default `Microsoft.Security/pricings@2024-01-01`).
 
 Type:
 
@@ -313,6 +360,9 @@ object({
       authorization_role_assignments = optional(string)
       insights_diagnostic_settings   = optional(string)
       operationsmanagement_solutions = optional(string)
+      securityinsights_onboarding_states = optional(object({
+        securityinsights_onboarding_states = optional(string)
+      }), {})
     }), {})
     insights_data_collection_rules = optional(object({
       insights_data_collection_rules = optional(string)
@@ -324,6 +374,9 @@ object({
       managedidentity_user_assigned_identities = optional(string)
       authorization_locks                      = optional(string)
       authorization_role_assignments           = optional(string)
+    }), {})
+    security_pricings = optional(object({
+      security_pricings = optional(string)
     }), {})
   })
 ```
@@ -394,6 +447,24 @@ map(object({
 
 Default: `{}`
 
+### <a name="input_sentinel_onboarding"></a> [sentinel\_onboarding](#input\_sentinel\_onboarding)
+
+Description: (Optional) Onboards Microsoft Sentinel on the workspace; `{}` onboards it with the defaults. Sentinel bills  
+the data it analyses. Not tested in Azure: released without a sandbox test by decision, its first test is  
+the first customer deployment. Defaults to `null`, not onboarded; setting it back to `null` offboards it.
+
+- `customer_managed_key_enabled` - (Optional) Use the customer-managed key of the workspace's dedicated cluster. Defaults to `false`; set it at onboarding.
+
+Type:
+
+```hcl
+object({
+    customer_managed_key_enabled = optional(bool, false)
+  })
+```
+
+Default: `null`
+
 ### <a name="input_tags"></a> [tags](#input\_tags)
 
 Description: (Optional) Tags of every resource the module creates.
@@ -450,6 +521,10 @@ The following outputs are exported:
 
 Description: Resource IDs of the data collection rules the module created, by kind: `change_tracking`, `vm_insights`, `defender_sql`. For `avm-ptn-alz`'s `policy_default_values`: `ama_change_tracking_data_collection_rule_id`, `ama_vm_insights_data_collection_rule_id` and `ama_mdfc_sql_data_collection_rule_id`.
 
+### <a name="output_defender_plan_resource_ids"></a> [defender\_plan\_resource\_ids](#output\_defender\_plan\_resource\_ids)
+
+Description: Resource IDs of the Defender plans the module sets, by key of `defender_plans`.
+
 ### <a name="output_name"></a> [name](#output\_name)
 
 Description: Name of the Log Analytics workspace.
@@ -457,6 +532,10 @@ Description: Name of the Log Analytics workspace.
 ### <a name="output_resource_id"></a> [resource\_id](#output\_resource\_id)
 
 Description: Resource ID of the Log Analytics workspace (`log_analytics_workspace_id` in `avm-ptn-alz`'s `policy_default_values`).
+
+### <a name="output_sentinel_onboarding_resource_id"></a> [sentinel\_onboarding\_resource\_id](#output\_sentinel\_onboarding\_resource\_id)
+
+Description: Resource ID of the workspace's Microsoft Sentinel onboarding state; null when Sentinel is not onboarded.
 
 ### <a name="output_user_assigned_identity"></a> [user\_assigned\_identity](#output\_user\_assigned\_identity)
 
@@ -473,6 +552,12 @@ The following Modules are called:
 ### <a name="module_data_collection_rule"></a> [data\_collection\_rule](#module\_data\_collection\_rule)
 
 Source: ./modules/data_collection_rule
+
+Version:
+
+### <a name="module_defender_plan"></a> [defender\_plan](#module\_defender\_plan)
+
+Source: ./modules/defender_plan
 
 Version:
 
