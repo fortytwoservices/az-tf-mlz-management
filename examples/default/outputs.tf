@@ -1,9 +1,17 @@
-output "principal_id" {
-  description = "Object ID of the identity's service principal."
-  value       = module.user_assigned_identity.principal_id
+# The values avm-ptn-alz's policy_default_values take.
+output "policy_default_values" {
+  description = "The management resources, under the names `avm-ptn-alz`'s `policy_default_values` use."
+  value = {
+    log_analytics_workspace_id                  = module.management.resource_id
+    ama_change_tracking_data_collection_rule_id = module.management.data_collection_rule_resource_ids.change_tracking
+    ama_vm_insights_data_collection_rule_id     = module.management.data_collection_rule_resource_ids.vm_insights
+    ama_mdfc_sql_data_collection_rule_id        = module.management.data_collection_rule_resource_ids.defender_sql
+    ama_user_assigned_managed_identity_id       = module.management.user_assigned_identity.resource_id
+    ama_user_assigned_managed_identity_name     = module.management.user_assigned_identity.name
+  }
 }
 
-output "resource_id" {
-  description = "Resource ID of the user-assigned identity."
-  value       = module.user_assigned_identity.resource_id
+output "workspace_id" {
+  description = "Workspace (customer) ID of the Log Analytics workspace."
+  value       = module.management.workspace_id
 }

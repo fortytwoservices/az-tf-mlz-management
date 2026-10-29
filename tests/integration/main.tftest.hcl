@@ -1,7 +1,7 @@
 # Real Azure, no mocks: ARM_SUBSCRIPTION_ID=<test subscription> terraform test -test-directory=tests/integration
-# Proves what mocks cannot: credentials written in parallel are serialised, survive an update of the
-# identity, can be removed or updated in place under the lock (ReadOnly too), and the lock is removed
-# before everything else on destroy.
+# Proves what mocks cannot: Azure accepts the three ALZ rules as sent (schema validation on) and they
+# send to the workspace; their settings change in place under the lock; a rule and the identity are
+# removed under their locks.
 
 run "setup" {
   module {
@@ -11,191 +11,129 @@ run "setup" {
 
 run "create" {
   variables {
-    name      = "id-mlz-it-${run.setup.suffix}"
-    parent_id = run.setup.resource_group_id
-    location  = run.setup.location
-    federated_identity_credentials = {
-      one   = { issuer = "https://token.actions.githubusercontent.com", subject = "repo:example-org/example-repo:environment:one" }
-      two   = { issuer = "https://token.actions.githubusercontent.com", subject = "repo:example-org/example-repo:environment:two" }
-      three = { issuer = "https://token.actions.githubusercontent.com", subject = "repo:example-org/example-repo:environment:three" }
+    name                          = "law-mlz-mgmt-it-${run.setup.suffix}"
+    parent_id                     = run.setup.resource_group_id
+    location                      = run.setup.location
+    permanently_delete_on_destroy = true
+    data_collection_rules = {
+      change_tracking = { name = "dcr-mlz-mgmt-it-ct-${run.setup.suffix}" }
+      vm_insights     = { name = "dcr-mlz-mgmt-it-vmi-${run.setup.suffix}" }
+      defender_sql    = { name = "dcr-mlz-mgmt-it-sql-${run.setup.suffix}" }
     }
-    lock = { kind = "CanNotDelete" }
-    role_assignments = {
-      reader = { role_definition_id_or_name = "Reader", principal_id = run.setup.object_id }
+    user_assigned_identity = { name = "id-mlz-mgmt-it-ama-${run.setup.suffix}" }
+    lock                   = { kind = "CanNotDelete" }
+    diagnostic_settings = {
+      self = {
+        workspace_resource_id = "/subscriptions/${run.setup.subscription_id}/resourceGroups/rg-mlz-mgmt-it-${run.setup.suffix}/providers/Microsoft.OperationalInsights/workspaces/law-mlz-mgmt-it-${run.setup.suffix}"
+        logs                  = [{ category_group = "allLogs" }]
+        metrics               = [{ category = "AllMetrics" }]
+      }
     }
   }
 
   assert {
-    condition     = length(output.federated_identity_credential_resource_ids) == 3
-    error_message = "All three credentials should be created."
+    condition     = jsonencode(keys(output.data_collection_rule_resource_ids)) == jsonencode(["change_tracking", "defender_sql", "vm_insights"])
+    error_message = "The three rules should be created."
   }
   assert {
-    condition     = can(regex("^[0-9a-f-]{36}$", output.principal_id)) && can(regex("^[0-9a-f-]{36}$", output.client_id))
-    error_message = "principal_id and client_id should be read back from Azure."
+    condition     = can(regex("^[0-9a-f-]{36}$", output.user_assigned_identity.principal_id))
+    error_message = "The identity should be created."
   }
 }
 
-run "update_identity" {
-  variables {
-    name      = "id-mlz-it-${run.setup.suffix}"
-    parent_id = run.setup.resource_group_id
-    location  = run.setup.location
-    federated_identity_credentials = {
-      one   = { issuer = "https://token.actions.githubusercontent.com", subject = "repo:example-org/example-repo:environment:one" }
-      two   = { issuer = "https://token.actions.githubusercontent.com", subject = "repo:example-org/example-repo:environment:two" }
-      three = { issuer = "https://token.actions.githubusercontent.com", subject = "repo:example-org/example-repo:environment:three" }
-    }
-    lock = { kind = "CanNotDelete" }
-    role_assignments = {
-      reader = { role_definition_id_or_name = "Reader", principal_id = run.setup.object_id }
-    }
-    isolation_scope = "Regional"
-    tags            = { updated = "true" } # a PUT of the identity without its credentials
-  }
-
-  assert {
-    condition     = azapi_resource.this.tags == tomap({ updated = "true" })
-    error_message = "The identity should be updated in place."
-  }
-}
-
-run "credentials_survive" {
+run "rules_in_azure" {
   module {
     source = "./tests/integration/read"
   }
 
   variables {
-    credential_ids = run.update_identity.federated_identity_credential_resource_ids
+    rule_ids = run.create.data_collection_rule_resource_ids
   }
 
   assert {
-    condition     = output.subjects.two == "repo:example-org/example-repo:environment:two" && length(output.subjects) == 3
-    error_message = "The credentials should still exist after the identity was updated."
+    condition     = alltrue([for kind, ids in output.destination_workspace_ids : jsonencode(ids) == jsonencode([lower(run.create.resource_id)])])
+    error_message = "Every rule should send to the workspace."
+  }
+  assert {
+    condition     = jsonencode(output.extension_names) == jsonencode({ change_tracking = ["ChangeTracking-Linux", "ChangeTracking-Windows"], defender_sql = ["MicrosoftDefenderForSQL"], vm_insights = [] })
+    error_message = "Azure should report the rules' extension data sources, and none on VM insights."
+  }
+  assert {
+    condition     = length(output.extension_settings.change_tracking["CTDataSource-Windows"].registrySettings.registryInfo) == 17
+    error_message = "Azure should report the 17 registry keys of Windows change tracking."
   }
 }
 
-run "isolation_scope_set_in_azure" {
-  module {
-    source = "./tests/integration/read_identity"
-  }
-
+run "update_under_lock" {
   variables {
-    identity_id = run.update_identity.resource_id
+    name                          = "law-mlz-mgmt-it-${run.setup.suffix}"
+    parent_id                     = run.setup.resource_group_id
+    location                      = run.setup.location
+    permanently_delete_on_destroy = true
+    data_collection_rules = {
+      change_tracking = { name = "dcr-mlz-mgmt-it-ct-${run.setup.suffix}" }
+      vm_insights     = { name = "dcr-mlz-mgmt-it-vmi-${run.setup.suffix}", processes_and_dependencies_enabled = true }
+      defender_sql    = { name = "dcr-mlz-mgmt-it-sql-${run.setup.suffix}", sql_queries_collection_enabled = true }
+    }
+    user_assigned_identity = { name = "id-mlz-mgmt-it-ama-${run.setup.suffix}" }
+    lock                   = { kind = "CanNotDelete" }
   }
 
   assert {
-    condition     = output.isolation_scope == "Regional"
-    error_message = "Azure should report the Regional isolation scope set by update_identity."
+    condition     = output.data_collection_rule_resource_ids == run.create.data_collection_rule_resource_ids
+    error_message = "The rules should be updated in place."
   }
 }
 
-run "remove_credential_under_lock" {
-  # A credential is deleted while the lock stays configured: the lock is removed and created again
-  # around the change. The scope goes back to Azure's default, which must reach Azure.
-  variables {
-    name      = "id-mlz-it-${run.setup.suffix}"
-    parent_id = run.setup.resource_group_id
-    location  = run.setup.location
-    federated_identity_credentials = {
-      one = { issuer = "https://token.actions.githubusercontent.com", subject = "repo:example-org/example-repo:environment:one" }
-      two = { issuer = "https://token.actions.githubusercontent.com", subject = "repo:example-org/example-repo:environment:two" }
-    }
-    lock = { kind = "CanNotDelete" }
-    role_assignments = {
-      reader = { role_definition_id_or_name = "Reader", principal_id = run.setup.object_id }
-    }
-  }
-
-  assert {
-    condition     = keys(output.federated_identity_credential_resource_ids) == ["one", "two"] && module.interfaces.lock_resource_id != null
-    error_message = "The third credential should be gone and the lock back."
-  }
-}
-
-run "isolation_scope_reset_in_azure" {
-  module {
-    source = "./tests/integration/read_identity"
-  }
-
-  variables {
-    identity_id = run.remove_credential_under_lock.resource_id
-  }
-
-  assert {
-    condition     = output.isolation_scope == "None"
-    error_message = "Azure should report the default isolation scope again once isolation_scope is no longer set."
-  }
-}
-
-run "readonly_lock" {
-  variables {
-    name      = "id-mlz-it-${run.setup.suffix}"
-    parent_id = run.setup.resource_group_id
-    location  = run.setup.location
-    federated_identity_credentials = {
-      one = { issuer = "https://token.actions.githubusercontent.com", subject = "repo:example-org/example-repo:environment:one" }
-      two = { issuer = "https://token.actions.githubusercontent.com", subject = "repo:example-org/example-repo:environment:two" }
-    }
-    lock = { kind = "ReadOnly" }
-    role_assignments = {
-      reader = { role_definition_id_or_name = "Reader", principal_id = run.setup.object_id }
-    }
-  }
-}
-
-run "update_credential_under_readonly_lock" {
-  # A credential updated in place keeps its ID, and a ReadOnly lock blocks the write: the credential's
-  # lock_dependency changes with its body, so the lock is removed and created again around it.
-  variables {
-    name      = "id-mlz-it-${run.setup.suffix}"
-    parent_id = run.setup.resource_group_id
-    location  = run.setup.location
-    federated_identity_credentials = {
-      one = { issuer = "https://token.actions.githubusercontent.com", subject = "repo:example-org/example-repo:environment:one" }
-      two = { issuer = "https://token.actions.githubusercontent.com", subject = "repo:example-org/example-repo:environment:two-updated" }
-    }
-    lock = { kind = "ReadOnly" }
-    role_assignments = {
-      reader = { role_definition_id_or_name = "Reader", principal_id = run.setup.object_id }
-    }
-  }
-
-  assert {
-    condition     = output.federated_identity_credential_resource_ids["two"] == run.readonly_lock.federated_identity_credential_resource_ids["two"] && module.interfaces.lock_resource_id != null
-    error_message = "The credential should be updated in place and the lock back."
-  }
-}
-
-run "credential_updated_in_azure" {
+run "updated_in_azure" {
   module {
     source = "./tests/integration/read"
   }
 
   variables {
-    credential_ids = run.update_credential_under_readonly_lock.federated_identity_credential_resource_ids
+    rule_ids = run.update_under_lock.data_collection_rule_resource_ids
   }
 
   assert {
-    condition     = output.subjects["two"] == "repo:example-org/example-repo:environment:two-updated"
-    error_message = "Azure should report the updated subject."
+    condition     = jsonencode(output.extension_names.vm_insights) == jsonencode(["DependencyAgent"])
+    error_message = "VM insights should collect processes and dependencies through the Dependency agent."
+  }
+  assert {
+    condition     = output.extension_settings.defender_sql.MicrosoftDefenderForSQL.enableCollectionOfSqlQueriesForSecurityResearch == true
+    error_message = "Defender for SQL should collect SQL queries."
   }
 }
 
-run "replace_locked_identity" {
-  # A new name replaces the identity. The lock goes first and the pause is replaced with the identity,
-  # so the old identity is deleted only after the lock deletion has propagated.
+run "remove_rule_and_identity_under_lock" {
   variables {
-    name      = "id-mlz-it-${run.setup.suffix}-renamed"
-    parent_id = run.setup.resource_group_id
-    location  = run.setup.location
-    federated_identity_credentials = {
-      one = { issuer = "https://token.actions.githubusercontent.com", subject = "repo:example-org/example-repo:environment:one" }
+    name                          = "law-mlz-mgmt-it-${run.setup.suffix}"
+    parent_id                     = run.setup.resource_group_id
+    location                      = run.setup.location
+    permanently_delete_on_destroy = true
+    data_collection_rules = {
+      change_tracking = { name = "dcr-mlz-mgmt-it-ct-${run.setup.suffix}" }
+      vm_insights     = { name = "dcr-mlz-mgmt-it-vmi-${run.setup.suffix}" }
     }
     lock = { kind = "CanNotDelete" }
   }
 
   assert {
-    condition     = output.name == "id-mlz-it-${run.setup.suffix}-renamed" && startswith(module.interfaces.lock_resource_id, "${output.resource_id}/providers/Microsoft.Authorization/locks/")
-    error_message = "The identity should be replaced and locked again."
+    condition     = jsonencode(keys(output.data_collection_rule_resource_ids)) == jsonencode(["change_tracking", "vm_insights"]) && output.user_assigned_identity == null
+    error_message = "The Defender for SQL rule and the identity should be gone."
+  }
+}
+
+run "processes_and_dependencies_off_in_azure" {
+  module {
+    source = "./tests/integration/read"
+  }
+
+  variables {
+    rule_ids = run.remove_rule_and_identity_under_lock.data_collection_rule_resource_ids
+  }
+
+  assert {
+    condition     = length(output.extension_names.vm_insights) == 0
+    error_message = "Turning processes and dependencies off should remove the Dependency agent's data source in Azure."
   }
 }

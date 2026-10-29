@@ -1,9 +1,11 @@
 mock_provider "azapi" {
   mock_resource "azapi_resource" {
     defaults = {
-      id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-test"
+      # One ID for every resource: a workspace ID, which the rules' destinations must be.
+      id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.OperationalInsights/workspaces/law-test"
       output = {
         properties = {
+          customerId  = "77777777-7777-7777-7777-777777777777"
           clientId    = "22222222-2222-2222-2222-222222222222"
           principalId = "33333333-3333-3333-3333-333333333333"
           tenantId    = "44444444-4444-4444-4444-444444444444"
@@ -28,8 +30,8 @@ mock_provider "random" {}
 mock_provider "time" {}
 
 variables {
-  location  = "norwayeast"
-  name      = "id-test"
+  location  = "swedencentral"
+  name      = "law-test"
   parent_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test"
 }
 
@@ -37,93 +39,200 @@ run "defaults" {
   command = apply
 
   assert {
-    condition     = azapi_resource.this.type == "Microsoft.ManagedIdentity/userAssignedIdentities@2024-11-30"
-    error_message = "The identity should use the default resource type."
+    condition     = module.log_analytics_workspace.name == var.name && output.name == var.name
+    error_message = "The workspace should be created with the module's name."
   }
   assert {
-    condition     = azapi_resource.this.name == var.name && azapi_resource.this.parent_id == var.parent_id && azapi_resource.this.location == var.location
-    error_message = "The identity should be created with name, parent_id and location."
+    condition     = output.resource_id == module.log_analytics_workspace.resource_id && output.workspace_id == "77777777-7777-7777-7777-777777777777"
+    error_message = "resource_id and workspace_id should come from the workspace."
   }
   assert {
-    condition     = azapi_resource.this.body.properties.isolationScope == "None"
-    error_message = "isolationScope should be sent with Azure's default, so that changing it back reaches Azure."
+    condition     = length(module.data_collection_rule) == 0 && length(output.data_collection_rule_resource_ids) == 0
+    error_message = "No data collection rule should be created by default."
   }
   assert {
-    condition     = azapi_resource.this.retry == null
-    error_message = "retry should be unset by default."
+    condition     = length(module.user_assigned_identity) == 0 && output.user_assigned_identity == null
+    error_message = "No identity should be created by default."
   }
   assert {
-    condition     = azapi_resource.this.timeouts == null
-    error_message = "timeouts should be unset by default."
-  }
-  assert {
-    condition     = length(coalesce(azapi_resource.this.tags, {})) == 0 # computed: the mock returns {}
-    error_message = "tags should be unset by default."
-  }
-  assert {
-    condition     = module.interfaces.lock_resource_id == null && length(module.interfaces.role_assignment_resource_ids) + length(module.federated_identity_credential) == 0
-    error_message = "No lock, role assignment or credential should be created by default."
-  }
-  assert {
-    condition     = output.resource_id == azapi_resource.this.id && output.name == var.name
-    error_message = "resource_id and name should come from the identity."
-  }
-  assert {
-    condition     = output.principal_id == "33333333-3333-3333-3333-333333333333" && output.client_id == "22222222-2222-2222-2222-222222222222" && output.tenant_id == "44444444-4444-4444-4444-444444444444"
-    error_message = "principal_id, client_id and tenant_id should come from the identity's exported properties."
-  }
-  assert {
-    condition     = length(output.federated_identity_credential_resource_ids) == 0
-    error_message = "No credential IDs should be output by default."
+    condition     = module.log_analytics_workspace.lock_resource_id == null && length(module.log_analytics_workspace.role_assignment_resource_ids) + length(module.log_analytics_workspace.diagnostic_setting_resource_ids) + length(module.log_analytics_workspace.solution_resource_ids) == 0
+    error_message = "No lock, role assignment, diagnostic setting or solution should be created by default."
   }
 }
 
-run "identity_options" {
+run "every_resource" {
   command = apply
 
   variables {
-    isolation_scope = "Regional"
-    tags            = { environment = "test" }
+    data_collection_rules = {
+      change_tracking = { name = "dcr-change-tracking" }
+      vm_insights     = { name = "dcr-vm-insights" }
+      defender_sql    = { name = "dcr-defender-sql" }
+    }
+    user_assigned_identity = { name = "id-ama" }
   }
 
   assert {
-    condition     = azapi_resource.this.body.properties.isolationScope == "Regional"
-    error_message = "isolation_scope should map to properties.isolationScope."
+    condition     = keys(module.data_collection_rule) == ["change_tracking", "defender_sql", "vm_insights"]
+    error_message = "One rule should be created per named kind."
   }
   assert {
-    condition     = azapi_resource.this.tags == tomap({ environment = "test" })
-    error_message = "tags should be set on the identity."
+    condition     = module.data_collection_rule["change_tracking"].name == "dcr-change-tracking" && module.data_collection_rule["vm_insights"].name == "dcr-vm-insights" && module.data_collection_rule["defender_sql"].name == "dcr-defender-sql"
+    error_message = "Each rule should take its name."
+  }
+  assert {
+    condition     = keys(output.data_collection_rule_resource_ids) == ["change_tracking", "defender_sql", "vm_insights"]
+    error_message = "Rule IDs should be output by kind."
+  }
+  assert {
+    condition     = output.user_assigned_identity.name == "id-ama" && output.user_assigned_identity.principal_id == "33333333-3333-3333-3333-333333333333" && output.user_assigned_identity.client_id == "22222222-2222-2222-2222-222222222222"
+    error_message = "The identity's name, principal ID and client ID should be output."
+  }
+  assert {
+    condition     = output.user_assigned_identity.resource_id == module.user_assigned_identity[0].resource_id
+    error_message = "The identity's resource ID should be output."
+  }
+  assert {
+    condition     = jsonencode(keys(module.log_analytics_workspace.solution_resource_ids)) == jsonencode(["ChangeTracking", "SQLAdvancedThreatProtection", "SQLVulnerabilityAssessment"])
+    error_message = "The workspace should get the solutions whose tables change tracking and Defender for SQL send to."
   }
 }
 
-run "federated_identity_credentials" {
+run "one_rule" {
   command = apply
 
   variables {
-    federated_identity_credentials = {
-      github-main = {
-        issuer  = "https://token.actions.githubusercontent.com"
-        subject = "repo:example/example:ref:refs/heads/main"
-      }
-      github-pr = {
-        issuer    = "https://token.actions.githubusercontent.com"
-        subject   = "repo:example/example:pull_request"
-        audiences = ["api://custom"]
-      }
+    data_collection_rules = {
+      vm_insights = { name = "dcr-vm-insights" }
     }
   }
 
   assert {
-    condition     = toset(keys(module.federated_identity_credential)) == toset(["github-main", "github-pr"])
-    error_message = "One credential module should be created per map entry."
+    condition     = keys(module.data_collection_rule) == ["vm_insights"]
+    error_message = "Only the named rule should be created."
   }
   assert {
-    condition     = module.federated_identity_credential["github-main"].name == "github-main"
-    error_message = "The map key should be the credential name."
+    condition     = length(module.log_analytics_workspace.solution_resource_ids) == 0
+    error_message = "VM insights should need no solution."
+  }
+}
+
+run "change_tracking_solution_only" {
+  command = apply
+
+  variables {
+    data_collection_rules = {
+      change_tracking = { name = "dcr-change-tracking" }
+    }
+  }
+
+  assert {
+    condition     = jsonencode(keys(module.log_analytics_workspace.solution_resource_ids)) == jsonencode(["ChangeTracking"])
+    error_message = "Change tracking alone should need only its solution."
+  }
+}
+
+run "change_tracking_body" {
+  command = plan
+
+  assert {
+    condition     = local.data_collection_rules.change_tracking.destination == "Microsoft-CT-Dest" && keys(local.data_collection_rules.change_tracking.data_flows) == ["change_tracking"]
+    error_message = "Change tracking should send its streams to its one destination."
   }
   assert {
-    condition     = keys(output.federated_identity_credential_resource_ids) == ["github-main", "github-pr"]
-    error_message = "Credential resource IDs should be output by credential name."
+    condition     = keys(local.data_collection_rules.change_tracking.data_sources.extensions) == ["CTDataSource-Linux", "CTDataSource-Windows"]
+    error_message = "Change tracking should have the Windows and Linux extension data sources."
+  }
+  assert {
+    condition = alltrue([
+      for source in local.data_collection_rules.change_tracking.data_sources.extensions :
+      source.streams == ["Microsoft-ConfigurationChange", "Microsoft-ConfigurationChangeV2", "Microsoft-ConfigurationData"]
+    ])
+    error_message = "Both change tracking data sources should send the three configuration streams."
+  }
+  assert {
+    condition     = [for entry in jsondecode(local.data_collection_rules.change_tracking.data_sources.extensions["CTDataSource-Windows"].extension_settings).registrySettings.registryInfo : entry.name] == [for i in range(1, 18) : "Registry_${i}"]
+    error_message = "Windows change tracking should watch the 17 recommended registry keys, Registry_1 to Registry_17."
+  }
+  assert {
+    condition     = jsondecode(local.data_collection_rules.change_tracking.data_sources.extensions["CTDataSource-Windows"].extension_settings).registrySettings.registryInfo[16].keyName == "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon\\Notify"
+    error_message = "The registry keys should keep AVM's order and single backslashes."
+  }
+  assert {
+    condition     = jsondecode(local.data_collection_rules.change_tracking.data_sources.extensions["CTDataSource-Linux"].extension_settings).fileSettings.fileInfo[0].destinationPath == "/etc/.*.conf"
+    error_message = "Linux change tracking should watch /etc/*.conf files."
+  }
+}
+
+run "vm_insights_body_default" {
+  command = plan
+
+  variables {
+    data_collection_rules = {
+      vm_insights = { name = "dcr-vm-insights" }
+    }
+  }
+
+  assert {
+    condition     = local.data_collection_rules.vm_insights.data_sources.performance_counters.VMInsightsPerfCounters.counter_specifiers == ["\\VmInsights\\DetailedMetrics"]
+    error_message = "VM insights should collect its detailed metrics counter set."
+  }
+  assert {
+    condition     = length(local.data_collection_rules.vm_insights.data_sources.extensions) == 0 && keys(local.data_collection_rules.vm_insights.data_flows) == ["insights_metrics"]
+    error_message = "VM insights should collect no processes and dependencies by default."
+  }
+}
+
+run "vm_insights_processes_and_dependencies" {
+  command = plan
+
+  variables {
+    data_collection_rules = {
+      vm_insights = { name = "dcr-vm-insights", processes_and_dependencies_enabled = true }
+    }
+  }
+
+  assert {
+    condition     = local.data_collection_rules.vm_insights.data_sources.extensions.DependencyAgentDataSource.extension_name == "DependencyAgent"
+    error_message = "Processes and dependencies should come from the Dependency agent's extension data source."
+  }
+  assert {
+    condition     = keys(local.data_collection_rules.vm_insights.data_flows) == ["insights_metrics", "service_map"] && local.data_collection_rules.vm_insights.data_flows.service_map.streams == ["Microsoft-ServiceMap"]
+    error_message = "The service map stream should get its own data flow."
+  }
+}
+
+run "defender_sql_body" {
+  command = plan
+
+  variables {
+    data_collection_rules = {
+      defender_sql = { name = "dcr-defender-sql", sql_queries_collection_enabled = true }
+    }
+  }
+
+  assert {
+    condition     = jsondecode(local.data_collection_rules.defender_sql.data_sources.extensions.MicrosoftDefenderForSQL.extension_settings).enableCollectionOfSqlQueriesForSecurityResearch == true
+    error_message = "sql_queries_collection_enabled should reach the extension settings."
+  }
+  assert {
+    condition     = length(local.data_collection_rules.defender_sql.data_flows.defender_sql.streams) == 6
+    error_message = "Defender for SQL should send its six streams."
+  }
+}
+
+run "defender_sql_queries_off_by_default" {
+  command = plan
+
+  variables {
+    data_collection_rules = {
+      defender_sql = { name = "dcr-defender-sql" }
+    }
+  }
+
+  assert {
+    condition     = jsondecode(local.data_collection_rules.defender_sql.data_sources.extensions.MicrosoftDefenderForSQL.extension_settings).enableCollectionOfSqlQueriesForSecurityResearch == false
+    error_message = "SQL queries should not be collected by default."
   }
 }
 
@@ -131,73 +240,65 @@ run "interfaces" {
   command = apply
 
   variables {
-    federated_identity_credentials = {
-      github-main = {
-        issuer  = "https://token.actions.githubusercontent.com"
-        subject = "repo:example/example:ref:refs/heads/main"
-      }
+    data_collection_rules = {
+      change_tracking = { name = "dcr-change-tracking" }
+      vm_insights     = { name = "dcr-vm-insights" }
     }
-    lock = { kind = "CanNotDelete" }
-    role_assignments = {
-      by_name = {
-        role_definition_id_or_name = "Reader"
-        principal_id               = "55555555-5555-5555-5555-555555555555"
-      }
-      tenant_level_id = {
-        role_definition_id_or_name       = "/providers/Microsoft.Authorization/roleDefinitions/acdd72a7-3385-48ef-bd42-f606fba81ae7"
-        principal_id                     = "66666666-6666-6666-6666-666666666666"
-        skip_service_principal_aad_check = true
-      }
-    }
-  }
-
-  # Their behaviour is tested in az-tf-mlz-interfaces; a test sees only its outputs.
-  assert {
-    condition     = module.interfaces.lock_resource_id != null && keys(module.interfaces.role_assignment_resource_ids) == ["by_name", "tenant_level_id"]
-    error_message = "The lock and role assignments should be created through az-tf-mlz-interfaces."
-  }
-}
-
-run "azapi_settings_reach_every_resource" {
-  command = apply
-
-  # ignore_body_changes is write-only, so a test cannot read it back, and avm_interface_ignore_body_changes
-  # only checks that the argument uses the variable, not which slot. Setting it here proves the slots are
-  # accepted; which resource reads which slot is left to review. The interface keys of resource_types and
-  # ignore_body_changes, retry and timeouts go to az-tf-mlz-interfaces, whose tests check them.
-  variables {
-    lock = { kind = "CanNotDelete" }
+    user_assigned_identity = { name = "id-ama" }
+    lock                   = { kind = "CanNotDelete" }
     role_assignments = {
       reader = {
         role_definition_id_or_name = "Reader"
         principal_id               = "55555555-5555-5555-5555-555555555555"
       }
     }
-    resource_types = {
-      managedidentity_user_assigned_identities = "Microsoft.ManagedIdentity/userAssignedIdentities@2025-05-31-preview"
-      authorization_locks                      = "Microsoft.Authorization/locks@2016-09-01"
-      authorization_role_assignments           = "Microsoft.Authorization/roleAssignments@2020-04-01-preview"
-    }
-    ignore_body_changes = {
-      managedidentity_user_assigned_identities = ["properties.isolationScope"]
-      authorization_locks                      = ["properties.notes"]
-      authorization_role_assignments           = ["properties.description"]
-    }
-    retry = {
-      error_message_regex = ["AnotherOperationInProgress"]
-    }
-    timeouts = {
-      create = "15m"
+    diagnostic_settings = {
+      self = {
+        workspace_resource_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test/providers/Microsoft.OperationalInsights/workspaces/law-central"
+        logs                  = [{ category_group = "allLogs" }]
+      }
     }
   }
 
   assert {
-    condition     = azapi_resource.this.type == "Microsoft.ManagedIdentity/userAssignedIdentities@2025-05-31-preview"
-    error_message = "The resource_types override should reach the identity."
+    condition     = module.log_analytics_workspace.lock_resource_id != null && alltrue([for rule in module.data_collection_rule : rule.lock_resource_id != null]) && module.user_assigned_identity[0].lock_resource_id != null
+    error_message = "The lock should go on the workspace, every rule and the identity."
   }
   assert {
-    condition     = azapi_resource.this.retry.error_message_regex == tolist(["AnotherOperationInProgress"]) && azapi_resource.this.timeouts.create == "15m"
-    error_message = "retry and timeouts should reach the identity."
+    condition     = keys(module.log_analytics_workspace.role_assignment_resource_ids) == ["reader"] && keys(module.log_analytics_workspace.diagnostic_setting_resource_ids) == ["self"]
+    error_message = "Role assignments and diagnostic settings should go on the workspace."
+  }
+  assert {
+    condition     = alltrue([for rule in module.data_collection_rule : length(rule.role_assignment_resource_ids) + length(rule.diagnostic_setting_resource_ids) == 0]) && length(module.user_assigned_identity[0].role_assignment_resource_ids) == 0
+    error_message = "Role assignments and diagnostic settings should not go on the rules or the identity."
+  }
+}
+
+run "azapi_settings_are_accepted" {
+  command = apply
+
+  # The slots reach the submodules, whose tests check their own wiring; a test here sees only the
+  # submodules' outputs, so which slot reaches which resource is left to review.
+  variables {
+    data_collection_rules  = { change_tracking = { name = "dcr-change-tracking" } }
+    user_assigned_identity = { name = "id-ama" }
+    resource_types = {
+      operationalinsights_workspaces           = { operationalinsights_workspaces = "Microsoft.OperationalInsights/workspaces@2025-02-01" }
+      insights_data_collection_rules           = { insights_data_collection_rules = "Microsoft.Insights/dataCollectionRules@2023-03-11" }
+      managedidentity_user_assigned_identities = { managedidentity_user_assigned_identities = "Microsoft.ManagedIdentity/userAssignedIdentities@2025-05-31-preview" }
+    }
+    ignore_body_changes = {
+      operationalinsights_workspaces           = { operationalinsights_workspaces = ["properties.retentionInDays"] }
+      insights_data_collection_rules           = { insights_data_collection_rules = ["properties.description"] }
+      managedidentity_user_assigned_identities = { managedidentity_user_assigned_identities = ["properties.isolationScope"] }
+    }
+    retry    = { error_message_regex = ["AnotherOperationInProgress"] }
+    timeouts = { create = "15m" }
+  }
+
+  assert {
+    condition     = length(module.data_collection_rule) == 1 && length(module.user_assigned_identity) == 1
+    error_message = "The overrides should be accepted by every submodule."
   }
 }
 
@@ -205,7 +306,7 @@ run "invalid_name" {
   command = plan
 
   variables {
-    name = "-bad"
+    name = "law_test"
   }
 
   expect_failures = [var.name]
@@ -221,37 +322,34 @@ run "invalid_parent_id" {
   expect_failures = [var.parent_id]
 }
 
-run "invalid_isolation_scope" {
+run "invalid_retention" {
   command = plan
 
   variables {
-    isolation_scope = "Global"
+    retention_in_days = 7
   }
 
-  expect_failures = [var.isolation_scope]
+  expect_failures = [var.retention_in_days]
 }
 
-run "empty_isolation_scope" {
+run "invalid_daily_quota" {
   command = plan
 
   variables {
-    isolation_scope = ""
+    daily_quota_gb = -1
   }
 
-  expect_failures = [var.isolation_scope]
+  expect_failures = [var.daily_quota_gb]
 }
 
-run "null_isolation_scope" {
+run "invalid_public_network_access" {
   command = plan
 
   variables {
-    isolation_scope = null
+    public_network_access_for_query = "SecuredByPerimeter"
   }
 
-  assert {
-    condition     = azapi_resource.this.body.properties.isolationScope == "None"
-    error_message = "A null isolation_scope should fall back to the default."
-  }
+  expect_failures = [var.public_network_access_for_query]
 }
 
 run "invalid_lock_kind" {
@@ -262,35 +360,4 @@ run "invalid_lock_kind" {
   }
 
   expect_failures = [var.lock]
-}
-
-run "too_many_credentials" {
-  command = plan
-
-  variables {
-    federated_identity_credentials = {
-      for i in range(21) : "credential-${i}" => {
-        issuer  = "https://token.actions.githubusercontent.com"
-        subject = "repo:example/example:environment:env-${i}"
-      }
-    }
-  }
-
-  expect_failures = [var.federated_identity_credentials]
-}
-
-run "invalid_delegated_identity" {
-  command = plan
-
-  variables {
-    role_assignments = {
-      reader = {
-        role_definition_id_or_name             = "Reader"
-        principal_id                           = "55555555-5555-5555-5555-555555555555"
-        delegated_managed_identity_resource_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-test"
-      }
-    }
-  }
-
-  expect_failures = [var.role_assignments]
 }
