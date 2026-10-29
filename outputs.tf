@@ -3,6 +3,11 @@ output "data_collection_rule_resource_ids" {
   value       = { for kind, rule in module.data_collection_rule : kind => rule.resource_id }
 }
 
+output "defender_plan_resource_ids" {
+  description = "Resource IDs of the Defender plans the module sets, by key of `defender_plans`."
+  value       = { for key, plan in module.defender_plan : key => plan.resource_id }
+}
+
 output "name" {
   description = "Name of the Log Analytics workspace."
   value       = module.log_analytics_workspace.name
@@ -11,6 +16,11 @@ output "name" {
 output "resource_id" {
   description = "Resource ID of the Log Analytics workspace (`log_analytics_workspace_id` in `avm-ptn-alz`'s `policy_default_values`)."
   value       = module.log_analytics_workspace.resource_id
+}
+
+output "sentinel_onboarding_resource_id" {
+  description = "Resource ID of the workspace's Microsoft Sentinel onboarding state; null when Sentinel is not onboarded."
+  value       = module.log_analytics_workspace.sentinel_onboarding_resource_id
 }
 
 output "user_assigned_identity" {

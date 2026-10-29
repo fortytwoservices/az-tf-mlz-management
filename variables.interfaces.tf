@@ -102,7 +102,7 @@ variable "lock" {
   })
   default     = null
   description = <<DESCRIPTION
-A lock on every resource the module creates: the workspace, the data collection rules and the identity. The ALZ policies refer to all of them. The following properties can be specified:
+A lock on the resources the module creates in the resource group: the workspace (which covers its Sentinel onboarding), the data collection rules and the identity. The ALZ policies refer to all of them. Defender plans are not locked: a lock at subscription scope would lock the subscription. The following properties can be specified:
 
 - `kind` - (Required) The type of lock. Possible values are `\"CanNotDelete\"` and `\"ReadOnly\"`.
 - `name` - (Optional) The name of the lock. If not specified, a name will be generated based on the `kind` value. Changing this forces the creation of a new resource.

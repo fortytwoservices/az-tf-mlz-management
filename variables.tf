@@ -138,3 +138,51 @@ and region. Defaults to `null`, none.
 - `name` - Name of the identity.
 DESCRIPTION
 }
+
+variable "defender_plans" {
+  type = map(object({
+    subscription_id = string
+    plan            = string
+    tier            = optional(string, "Standard")
+    sub_plan        = optional(string)
+    extensions = optional(map(object({
+      enabled               = bool
+      additional_properties = optional(map(string))
+    })), {})
+  }))
+  default     = {}
+  description = <<DESCRIPTION
+Microsoft Defender for Cloud plans, keyed by a stable name of your choice, each on one subscription. A
+subscription's plans always exist: `tier = "Free"` turns one off, and removing an entry leaves Azure as it
+is (turn it off first). A Standard plan bills every protected resource in its subscription. With the Azure
+landing zone policies, give each plan one owner: this, or `Deploy-MDFC-Config-H224`'s `enableAscFor*`.
+Not tested in Azure: released without a sandbox test by decision, its first test is the first customer
+deployment. Defaults to none.
+
+- `subscription_id` - Resource ID of the subscription, `/subscriptions/<id>`.
+- `plan` - Defender plan (pricing) name, for example `VirtualMachines`, `SqlServers`, `StorageAccounts`, `KeyVaults`, `Containers`, `CloudPosture`.
+- `tier` - (Optional) `Standard` (on, default) or `Free` (off).
+- `sub_plan` - (Optional) Sub-plan of a Standard plan, for example `P1` or `P2` for `VirtualMachines`. Unset, Azure's sub-plan stands.
+- `extensions` - (Optional) Extensions of the plan, keyed by extension name, each `{ enabled, additional_properties }`. Only the listed ones are managed; the others, and one removed from the map, stay as Azure has them.
+DESCRIPTION
+  nullable    = false
+
+  validation {
+    condition     = length(var.defender_plans) == length(distinct([for _, plan in var.defender_plans : lower("${plan.subscription_id}/${plan.plan}")]))
+    error_message = "Each Defender plan of a subscription can be set once."
+  }
+}
+
+variable "sentinel_onboarding" {
+  type = object({
+    customer_managed_key_enabled = optional(bool, false)
+  })
+  default     = null
+  description = <<DESCRIPTION
+(Optional) Onboards Microsoft Sentinel on the workspace; `{}` onboards it with the defaults. Sentinel bills
+the data it analyses. Not tested in Azure: released without a sandbox test by decision, its first test is
+the first customer deployment. Defaults to `null`, not onboarded; setting it back to `null` offboards it.
+
+- `customer_managed_key_enabled` - (Optional) Use the customer-managed key of the workspace's dedicated cluster. Defaults to `false`; set it at onboarding.
+DESCRIPTION
+}

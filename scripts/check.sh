@@ -20,7 +20,8 @@ if $fix; then terraform fmt -recursive; else terraform fmt -check -recursive; fi
 
 for dir in "${modules[@]}" "${examples[@]}"; do
   step "validate $dir"
-  terraform -chdir="$dir" init -backend=false -input=false >/dev/null
+  # The test directory is named so that init installs the helper modules unit tests call.
+  terraform -chdir="$dir" init -backend=false -input=false -test-directory=tests/unit >/dev/null
   terraform -chdir="$dir" validate -no-color
 done
 

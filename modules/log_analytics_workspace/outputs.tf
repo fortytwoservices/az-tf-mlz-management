@@ -20,6 +20,11 @@ output "resource_id" {
   depends_on = [azapi_resource.solution]
 }
 
+output "sentinel_onboarding_resource_id" {
+  description = "Resource ID of the Microsoft Sentinel onboarding state; null when Sentinel is not onboarded."
+  value       = length(module.sentinel_onboarding) == 0 ? null : module.sentinel_onboarding[0].resource_id
+}
+
 output "solution_resource_ids" {
   description = "Resource IDs of the solutions on the workspace, by product name."
   value       = { for product, solution in azapi_resource.solution : product => solution.id }

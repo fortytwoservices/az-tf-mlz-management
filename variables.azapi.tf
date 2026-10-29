@@ -6,6 +6,9 @@ variable "ignore_body_changes" {
       authorization_role_assignments = optional(list(string), [])
       insights_diagnostic_settings   = optional(list(string), [])
       operationsmanagement_solutions = optional(list(string), [])
+      securityinsights_onboarding_states = optional(object({
+        securityinsights_onboarding_states = optional(list(string), [])
+      }), {})
     }), {})
     insights_data_collection_rules = optional(object({
       insights_data_collection_rules = optional(list(string), [])
@@ -25,7 +28,7 @@ Paths in each resource's `body` whose changes the AzAPI provider ignores. Prefer
 
 Paths use dot notation, for example `properties.retentionInDays`. Individual list items cannot be targeted; ignore the whole list property instead. Configuration changes at an ignored path are **not** sent to Azure until that path is removed from the list. Changes take effect only after an apply, because the value is held in provider-private state.
 
-- `operationalinsights_workspaces` - Slot for `modules/log_analytics_workspace`: its `operationalinsights_workspaces`, `authorization_locks`, `authorization_role_assignments`, `insights_diagnostic_settings` and `operationsmanagement_solutions`.
+- `operationalinsights_workspaces` - Slot for `modules/log_analytics_workspace`: its `operationalinsights_workspaces`, `authorization_locks`, `authorization_role_assignments`, `insights_diagnostic_settings`, `operationsmanagement_solutions`, and its slot for `modules/sentinel_onboarding` (`securityinsights_onboarding_states`). Defender plans have none: they are updated in place (`azapi_update_resource`), which has no `ignore_body_changes`.
 - `insights_data_collection_rules` - Slot for `modules/data_collection_rule`, applied to every rule: its `insights_data_collection_rules`, `authorization_locks`, `authorization_role_assignments` and `insights_diagnostic_settings`.
 - `managedidentity_user_assigned_identities` - Slot for `modules/user_assigned_identity`: its `managedidentity_user_assigned_identities`, `authorization_locks` and `authorization_role_assignments`.
 DESCRIPTION
@@ -40,6 +43,9 @@ variable "resource_types" {
       authorization_role_assignments = optional(string)
       insights_diagnostic_settings   = optional(string)
       operationsmanagement_solutions = optional(string)
+      securityinsights_onboarding_states = optional(object({
+        securityinsights_onboarding_states = optional(string)
+      }), {})
     }), {})
     insights_data_collection_rules = optional(object({
       insights_data_collection_rules = optional(string)
@@ -52,14 +58,18 @@ variable "resource_types" {
       authorization_locks                      = optional(string)
       authorization_role_assignments           = optional(string)
     }), {})
+    security_pricings = optional(object({
+      security_pricings = optional(string)
+    }), {})
   })
   default     = {}
   description = <<DESCRIPTION
 Override the AzAPI `<provider>/<resource>@<api-version>` strings used by the submodules. Each key defaults to a tested value in its submodule; supply only the keys you want to override.
 
-- `operationalinsights_workspaces` - Slot for `modules/log_analytics_workspace` (default `Microsoft.OperationalInsights/workspaces@2025-07-01`), with its lock, role assignment, diagnostic setting and solution types.
+- `operationalinsights_workspaces` - Slot for `modules/log_analytics_workspace` (default `Microsoft.OperationalInsights/workspaces@2025-07-01`), with its lock, role assignment, diagnostic setting and solution types, and its slot for `modules/sentinel_onboarding` (`securityinsights_onboarding_states`, default `Microsoft.SecurityInsights/onboardingStates@2025-09-01`).
 - `insights_data_collection_rules` - Slot for `modules/data_collection_rule` (default `Microsoft.Insights/dataCollectionRules@2024-03-11`), with its lock, role assignment and diagnostic setting types.
 - `managedidentity_user_assigned_identities` - Slot for `modules/user_assigned_identity` (default `Microsoft.ManagedIdentity/userAssignedIdentities@2024-11-30`), with its lock and role assignment types.
+- `security_pricings` - Slot for `modules/defender_plan` (default `Microsoft.Security/pricings@2024-01-01`).
 DESCRIPTION
   nullable    = false
 }

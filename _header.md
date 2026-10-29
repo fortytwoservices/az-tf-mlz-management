@@ -35,7 +35,19 @@ module "management" {
   Windows and Linux; VM insights performance counters, with processes and dependencies (the Map) only when
   `processes_and_dependencies_enabled` is set; Microsoft Defender for SQL on machines.
 - **The identity** (`modules/user_assigned_identity`), when named.
-- **The lock** goes on every resource the module creates.
+- **The lock** goes on the workspace (which covers its Sentinel onboarding), the rules and the identity.
+- **Microsoft Sentinel** (`modules/sentinel_onboarding`), when `sentinel_onboarding` is set: onboarded on
+  the workspace. Sentinel bills the data it analyses.
+- **Microsoft Defender for Cloud plans** (`modules/defender_plan`), one per entry of `defender_plans`, on
+  any subscription: `tier = "Free"` turns a plan off, and removing an entry leaves Azure as it is (a
+  subscription's plans always exist). An unset `sub_plan` and unlisted extensions stay as Azure has them. With the ALZ policies, give each plan one owner: this, or
+  `Deploy-MDFC-Config-H224`'s `enableAscFor*` parameters.
+
+**Sentinel and the Defender plans are not tested in Azure.** By decision they are released without a
+sandbox test (a plan bills every protected resource of a subscription), and the first customer deployment
+is their first test. Only their bodies are checked, against the AzAPI provider's schema: Sentinel's by
+`azapi_resource` itself, the Defender plans' through a unit-test fixture, because `azapi_update_resource`
+does not validate its body.
 
 The outputs give what `avm-ptn-alz`'s `policy_default_values` take: `resource_id`
 (`log_analytics_workspace_id`), `data_collection_rule_resource_ids` (`change_tracking`, `vm_insights`,
@@ -44,7 +56,8 @@ The outputs give what `avm-ptn-alz`'s `policy_default_values` take: `resource_id
 
 Not created: the resource group, an automation account and its linked service (Azure Update Manager and
 change tracking with the Azure Monitor Agent need none), other legacy solutions (VM insights with the
-Azure Monitor Agent needs none, the Map included), Microsoft Sentinel and Defender for Cloud plans. Associations between machines
+Azure Monitor Agent needs none, the Map included), Sentinel's data connectors and analytics rules, and
+Defender for Cloud's security contacts and continuous export (the ALZ policies set those). Associations between machines
 and the rules are left to the ALZ policies.
 
 ## Behaviour to know
