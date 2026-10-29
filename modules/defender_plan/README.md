@@ -10,7 +10,10 @@ source = "git::https://github.com/fortytwoservices/az-tf-mlz-management.git//mod
 ```
 
 - **Not tested in Azure.** By decision, this is released without a sandbox test; the first customer
-  deployment is its first test. Only its body is checked, against the AzAPI provider's schema.
+  deployment is its first test. `azapi_update_resource` does not validate its body against the AzAPI
+  provider's schema, so the unit tests do, through an `azapi_resource` fixture (property names and types;
+  the schema does not restrict the tier's values, which this module validates).
+- Only what is set is managed: an unset `sub_plan` and the extensions not listed stay as Azure has them.
 - A subscription's plans always exist, so the plan is updated in place (`azapi_update_resource`):
   `tier = "Free"` turns it off, and removing it from the configuration leaves Azure as it is (still on,
   if it was). Turn it off first, then remove it.
@@ -58,7 +61,8 @@ The following input variables are optional (have default values):
 ### <a name="input_extensions"></a> [extensions](#input\_extensions)
 
 Description: Extensions of the plan, keyed by extension name, for example `AgentlessVmScanning` or
-`SensitiveDataDiscovery`. Extensions left out are not sent. Defaults to none.
+`SensitiveDataDiscovery`. Only the extensions listed are managed: the others, and one removed from this  
+map, stay as Azure has them. Defaults to none.
 
 - `enabled` - Whether the extension is on.
 - `additional_properties` - (Optional) The extension's additional properties, for example `{ ExclusionTags = "[]" }`.
@@ -114,7 +118,7 @@ Default: `null`
 
 ### <a name="input_sub_plan"></a> [sub\_plan](#input\_sub\_plan)
 
-Description: (Optional) Sub-plan of a Standard plan, where the plan has more than one, for example `P1` or `P2` for `VirtualMachines`. Defaults to `null`, the full plan.
+Description: (Optional) Sub-plan of a Standard plan, where the plan has more than one, for example `P1` or `P2` for `VirtualMachines`. Defaults to `null`: not sent, so Azure's sub-plan stands (the full plan for a new one); setting it back to `null` leaves the last one in place.
 
 Type: `string`
 

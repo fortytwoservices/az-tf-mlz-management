@@ -162,8 +162,8 @@ deployment. Defaults to none.
 - `subscription_id` - Resource ID of the subscription, `/subscriptions/<id>`.
 - `plan` - Defender plan (pricing) name, for example `VirtualMachines`, `SqlServers`, `StorageAccounts`, `KeyVaults`, `Containers`, `CloudPosture`.
 - `tier` - (Optional) `Standard` (on, default) or `Free` (off).
-- `sub_plan` - (Optional) Sub-plan of a Standard plan, for example `P1` or `P2` for `VirtualMachines`.
-- `extensions` - (Optional) Extensions of the plan, keyed by extension name, each `{ enabled, additional_properties }`.
+- `sub_plan` - (Optional) Sub-plan of a Standard plan, for example `P1` or `P2` for `VirtualMachines`. Unset, Azure's sub-plan stands.
+- `extensions` - (Optional) Extensions of the plan, keyed by extension name, each `{ enabled, additional_properties }`. Only the listed ones are managed; the others, and one removed from the map, stay as Azure has them.
 DESCRIPTION
   nullable    = false
 

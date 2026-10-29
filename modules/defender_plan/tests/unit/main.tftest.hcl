@@ -6,9 +6,24 @@ mock_provider "azapi" {
   }
 }
 
+# Each expected body is asserted against the module's body and validated against the embedded schema
+# through ./schema: azapi_update_resource does not validate its body itself.
 variables {
   name      = "VirtualMachines"
   parent_id = "/subscriptions/00000000-0000-0000-0000-000000000000"
+
+  expected_default_body = { properties = { pricingTier = "Standard" } }
+  expected_full_body = {
+    properties = {
+      pricingTier = "Standard"
+      subPlan     = "P2"
+      extensions = [
+        { name = "AgentlessVmScanning", isEnabled = "True", additionalExtensionProperties = { ExclusionTags = "[]" } },
+        { name = "MdeDesignatedSubscription", isEnabled = "False", additionalExtensionProperties = null },
+      ]
+    }
+  }
+  expected_free_body = { properties = { pricingTier = "Free" } }
 }
 
 run "defaults" {
@@ -23,8 +38,12 @@ run "defaults" {
     error_message = "The plan should be the named pricing on the subscription."
   }
   assert {
-    condition     = jsonencode(azapi_update_resource.this.body) == jsonencode({ properties = { pricingTier = "Standard", subPlan = null, extensions = null } })
-    error_message = "Every property should be sent: Standard, no sub-plan and no extensions as null."
+    condition     = jsonencode(azapi_update_resource.this.body) == jsonencode(var.expected_default_body)
+    error_message = "Only the tier should be sent by default: Azure's sub-plan and extensions stand."
+  }
+  assert {
+    condition     = jsonencode(azapi_update_resource.this.ignore_other_items_in_list) == jsonencode(["properties.extensions"]) && jsonencode(azapi_update_resource.this.list_unique_id_property) == jsonencode({ "properties.extensions" = "name" })
+    error_message = "Extensions should be matched by name, and the ones Azure adds ignored."
   }
   assert {
     condition     = azapi_update_resource.this.retry == null && azapi_update_resource.this.timeouts == null
@@ -33,6 +52,18 @@ run "defaults" {
   assert {
     condition     = output.resource_id == azapi_update_resource.this.id && output.name == var.name
     error_message = "resource_id and name should come from the plan."
+  }
+}
+
+run "defaults_schema" {
+  command = plan
+
+  module {
+    source = "./tests/unit/schema"
+  }
+
+  variables {
+    body = var.expected_default_body
   }
 }
 
@@ -48,15 +79,20 @@ run "sub_plan_and_extensions" {
   }
 
   assert {
-    condition = jsonencode(azapi_update_resource.this.body.properties) == jsonencode({
-      pricingTier = "Standard"
-      subPlan     = "P2"
-      extensions = [
-        { name = "AgentlessVmScanning", isEnabled = "True", additionalExtensionProperties = { ExclusionTags = "[]" } },
-        { name = "MdeDesignatedSubscription", isEnabled = "False", additionalExtensionProperties = null },
-      ]
-    })
+    condition     = jsonencode(azapi_update_resource.this.body) == jsonencode(var.expected_full_body)
     error_message = "The sub-plan and the extensions, in key order with isEnabled as a string, should be sent."
+  }
+}
+
+run "sub_plan_and_extensions_schema" {
+  command = plan
+
+  module {
+    source = "./tests/unit/schema"
+  }
+
+  variables {
+    body = var.expected_full_body
   }
 }
 
@@ -68,8 +104,20 @@ run "free" {
   }
 
   assert {
-    condition     = azapi_update_resource.this.body.properties.pricingTier == "Free"
+    condition     = jsonencode(azapi_update_resource.this.body) == jsonencode(var.expected_free_body)
     error_message = "tier Free should turn the plan off."
+  }
+}
+
+run "free_schema" {
+  command = plan
+
+  module {
+    source = "./tests/unit/schema"
+  }
+
+  variables {
+    body = var.expected_free_body
   }
 }
 

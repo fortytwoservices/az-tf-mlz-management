@@ -28,7 +28,8 @@ variable "extensions" {
   default     = {}
   description = <<DESCRIPTION
 Extensions of the plan, keyed by extension name, for example `AgentlessVmScanning` or
-`SensitiveDataDiscovery`. Extensions left out are not sent. Defaults to none.
+`SensitiveDataDiscovery`. Only the extensions listed are managed: the others, and one removed from this
+map, stay as Azure has them. Defaults to none.
 
 - `enabled` - Whether the extension is on.
 - `additional_properties` - (Optional) The extension's additional properties, for example `{ ExclusionTags = "[]" }`.
@@ -39,7 +40,7 @@ DESCRIPTION
 variable "sub_plan" {
   type        = string
   default     = null
-  description = "(Optional) Sub-plan of a Standard plan, where the plan has more than one, for example `P1` or `P2` for `VirtualMachines`. Defaults to `null`, the full plan."
+  description = "(Optional) Sub-plan of a Standard plan, where the plan has more than one, for example `P1` or `P2` for `VirtualMachines`. Defaults to `null`: not sent, so Azure's sub-plan stands (the full plan for a new one); setting it back to `null` leaves the last one in place."
 }
 
 variable "tier" {
