@@ -36,7 +36,10 @@ module "management" {
   region and sending to it, with the bodies of `avm-ptn-alz-management`: change tracking and inventory for
   Windows and Linux; VM insights performance counters, with processes and dependencies (the Map) only when
   `processes_and_dependencies_enabled` is set; Microsoft Defender for SQL on machines.
-- **The identity** (`modules/user_assigned_identity`), when named.
+- **The identity**, when named, through
+  [`az-tf-mlz-user-assigned-identity`](https://github.com/fortytwoservices/az-tf-mlz-user-assigned-identity),
+  which a separate state can also call alone (it replaced this module's own
+  `//modules/user_assigned_identity`). An identity deployed by an earlier release stays as it is on upgrade.
 - **The lock** goes on the workspace (which covers its Sentinel onboarding), the rules and the identity.
 - **Microsoft Sentinel** (`modules/sentinel_onboarding`), when `sentinel_onboarding` is set: onboarded on
   the workspace. Sentinel bills the data it analyses.
@@ -251,7 +254,7 @@ Paths use dot notation, for example `properties.retentionInDays`. Individual lis
 
 - `operationalinsights_workspaces` - Slot for `modules/log_analytics_workspace`: its `operationalinsights_workspaces`, `authorization_locks`, `authorization_role_assignments`, `insights_diagnostic_settings`, `operationsmanagement_solutions`, and its slot for `modules/sentinel_onboarding` (`securityinsights_onboarding_states`). Defender plans have none: they are updated in place (`azapi_update_resource`), which has no `ignore_body_changes`.
 - `insights_data_collection_rules` - Slot for `modules/data_collection_rule`, applied to every rule: its `insights_data_collection_rules`, `authorization_locks`, `authorization_role_assignments` and `insights_diagnostic_settings`.
-- `managedidentity_user_assigned_identities` - Slot for `modules/user_assigned_identity`: its `managedidentity_user_assigned_identities`, `authorization_locks` and `authorization_role_assignments`.
+- `managedidentity_user_assigned_identities` - Slot for `az-tf-mlz-user-assigned-identity`: its `managedidentity_user_assigned_identities`, `authorization_locks` and `authorization_role_assignments`.
 
 Type:
 
@@ -349,7 +352,7 @@ Description: Override the AzAPI `<provider>/<resource>@<api-version>` strings us
 
 - `operationalinsights_workspaces` - Slot for `modules/log_analytics_workspace` (default `Microsoft.OperationalInsights/workspaces@2025-07-01`), with its lock, role assignment, diagnostic setting and solution types, and its slot for `modules/sentinel_onboarding` (`securityinsights_onboarding_states`, default `Microsoft.SecurityInsights/onboardingStates@2025-09-01`).
 - `insights_data_collection_rules` - Slot for `modules/data_collection_rule` (default `Microsoft.Insights/dataCollectionRules@2024-03-11`), with its lock, role assignment and diagnostic setting types.
-- `managedidentity_user_assigned_identities` - Slot for `modules/user_assigned_identity` (default `Microsoft.ManagedIdentity/userAssignedIdentities@2024-11-30`), with its lock and role assignment types.
+- `managedidentity_user_assigned_identities` - Slot for `az-tf-mlz-user-assigned-identity` (default `Microsoft.ManagedIdentity/userAssignedIdentities@2024-11-30`), with its lock and role assignment types.
 - `security_pricings` - Slot for `modules/defender_plan` (default `Microsoft.Security/pricings@2024-01-01`).
 
 Type:
@@ -571,9 +574,9 @@ Version:
 
 ### <a name="module_user_assigned_identity"></a> [user\_assigned\_identity](#module\_user\_assigned\_identity)
 
-Source: ./modules/user_assigned_identity
+Source: git::https://github.com/fortytwoservices/az-tf-mlz-user-assigned-identity.git
 
-Version:
+Version: v0.1.0
 
 ## Development
 

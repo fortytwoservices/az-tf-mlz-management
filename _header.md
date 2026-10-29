@@ -34,7 +34,10 @@ module "management" {
   region and sending to it, with the bodies of `avm-ptn-alz-management`: change tracking and inventory for
   Windows and Linux; VM insights performance counters, with processes and dependencies (the Map) only when
   `processes_and_dependencies_enabled` is set; Microsoft Defender for SQL on machines.
-- **The identity** (`modules/user_assigned_identity`), when named.
+- **The identity**, when named, through
+  [`az-tf-mlz-user-assigned-identity`](https://github.com/fortytwoservices/az-tf-mlz-user-assigned-identity),
+  which a separate state can also call alone (it replaced this module's own
+  `//modules/user_assigned_identity`). An identity deployed by an earlier release stays as it is on upgrade.
 - **The lock** goes on the workspace (which covers its Sentinel onboarding), the rules and the identity.
 - **Microsoft Sentinel** (`modules/sentinel_onboarding`), when `sentinel_onboarding` is set: onboarded on
   the workspace. Sentinel bills the data it analyses.
