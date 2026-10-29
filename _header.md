@@ -1,41 +1,59 @@
-# az-tf-mlz-template
+# az-tf-mlz-management
 
-The template for Fortytwo's managed landing zone (MLZ) Terraform modules, `az-tf-mlz-<name>`: AzAPI
-only, shaped like the Azure Verified Modules (AVM) AzAPI modules, without telemetry.
+The management resources of a Fortytwo managed landing zone (MLZ), in AzAPI: a Log Analytics workspace,
+the three data collection rules the Azure landing zone (ALZ) policies take, and the Azure Monitor Agent's
+user-assigned identity. It replaces `avm-ptn-alz-management` and AVM's Log Analytics module.
 
-## Start a module from this template
+```hcl
+module "management" {
+  source = "git::https://github.com/fortytwoservices/az-tf-mlz-management.git?ref=vX.Y.Z"
 
-1. Create the repository from the template and apply the repository settings:
+  name      = "law-management"
+  parent_id = "/subscriptions/<subscription>/resourceGroups/rg-management"
+  location  = "swedencentral"
+  data_collection_rules = {
+    change_tracking = { name = "dcr-change-tracking" }
+    vm_insights     = { name = "dcr-vm-insights" }
+    defender_sql    = { name = "dcr-defender-sql" }
+  }
+  user_assigned_identity = { name = "id-ama" }
+  lock                   = { kind = "CanNotDelete" }
+}
+```
 
-   ```sh
-   gh repo create fortytwoservices/az-tf-mlz-<name> --internal --template fortytwoservices/az-tf-mlz-template --clone
-   cd az-tf-mlz-<name>
-   scripts/repo-settings.sh fortytwoservices/az-tf-mlz-<name>
-   ```
+## What it creates
 
-   CI reads the internal `az-tf-mlz-*` modules with the reader App `gh-az-tf-modules-reader`: set its
-   private key as the secret `AZ_TF_MODULE_READER_PRIVATE_KEY` (the script prints the command when it is
-   missing). If other modules will call this one, an org owner also adds the repository to the App's
-   selected repositories (organization settings, GitHub Apps, `gh-az-tf-modules-reader`, Configure).
+- **The workspace** (`modules/log_analytics_workspace`), always, on the `PerGB2018` pricing tier: 30 days
+  of retention by default, no daily cap, local authentication (shared keys) off, resource-context access
+  on, public ingestion and query on. Role assignments and diagnostic settings go on the workspace.
+- **The legacy solutions whose tables the rules send to:** `ChangeTracking` with the change tracking rule,
+  `SQLAdvancedThreatProtection` and `SQLVulnerabilityAssessment` with the Defender for SQL rule. Azure
+  refuses a rule whose destination table does not exist (`InvalidOutputTable`), and a solution adds its
+  tables about a minute after it is created, so `retry` retries that error by default.
+- **The data collection rules** (`modules/data_collection_rule`), each when named, in the workspace's
+  region and sending to it, with the bodies of `avm-ptn-alz-management`: change tracking and inventory for
+  Windows and Linux; VM insights performance counters, with processes and dependencies (the Map) only when
+  `processes_and_dependencies_enabled` is set; Microsoft Defender for SQL on machines.
+- **The identity** (`modules/user_assigned_identity`), when named.
+- **The lock** goes on every resource the module creates.
 
-2. On a branch, replace the placeholder module (below) with the real one: root files, `modules/*`,
-   `examples/*` and the tests. Rewrite this `_header.md`; keep `_footer.md`. Delete `CHANGELOG.md` and
-   set `.release-please-manifest.json` to `{}`: both carry the template's own releases, and left in place
-   they make the module's first release something other than 0.1.0.
-3. Run `scripts/check.sh --fix`, then the Azure tests, and open a pull request whose title starts with
-   `feat:`. Merging it makes release-please open the release pull request for the first version.
+The outputs give what `avm-ptn-alz`'s `policy_default_values` take: `resource_id`
+(`log_analytics_workspace_id`), `data_collection_rule_resource_ids` (`change_tracking`, `vm_insights`,
+`defender_sql`) and `user_assigned_identity` (`resource_id`, `name`). That input takes each value as
+`jsonencode({ value = ... })`; `examples/default` builds the map.
 
-## The placeholder module
+Not created: the resource group, an automation account and its linked service (Azure Update Manager and
+change tracking with the Azure Monitor Agent need none), other legacy solutions (VM insights with the
+Azure Monitor Agent needs none, the Map included), Microsoft Sentinel and Defender for Cloud plans. Associations between machines
+and the rules are left to the ALZ policies.
 
-A user-assigned identity with federated identity credentials. It is here to keep every pattern a
-module needs working and tested:
+## Behaviour to know
 
-- the primary resource `azapi_resource.this`, with `resource_types`, `ignore_body_changes`, `retry`,
-  `timeouts` and `tags`;
-- a child resource type as a submodule managing one instance (`modules/federated_identity_credential`),
-  called with `for_each` by the root, with its writes serialised on the parent (`locks`);
-- the lock and role assignment interfaces through
-  [`az-tf-mlz-interfaces`](https://github.com/fortytwoservices/az-tf-mlz-interfaces), with the
-  credentials passed as `lock_dependencies` so the lock is removed around their changes;
-- unit tests with mocked providers, integration tests in Azure, and an example that is applied,
-  planned again (no changes allowed) and destroyed.
+- **Soft delete.** A deleted workspace is kept for 14 days and its name stays reserved; creating a
+  workspace with the same name, resource group and region in that time recovers it with its data.
+  `permanently_delete_on_destroy = true` deletes it permanently instead (development and tests).
+- **ALZ denies deleting the identity** (`DenyAction-DeleteUAMIAMA`): where that policy is assigned,
+  removing or renaming `user_assigned_identity` fails until the policy is exempted.
+- **A `ReadOnly` lock** blocks updates of the locked resources themselves: remove it before changing them.
+- Every submodule can be called alone, for example a workload's own data collection rule:
+  `source = "git::https://github.com/fortytwoservices/az-tf-mlz-management.git//modules/data_collection_rule?ref=vX.Y.Z"`.

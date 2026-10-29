@@ -1,4 +1,4 @@
-# Reads federated identity credentials straight from Azure; fails if one is gone.
+# Reads data collection rules straight from Azure.
 terraform {
   required_providers {
     azapi = {
@@ -8,18 +8,26 @@ terraform {
   }
 }
 
-variable "credential_ids" {
+variable "rule_ids" {
   type = map(string)
 }
 
-data "azapi_resource" "credential" {
-  for_each = var.credential_ids
+data "azapi_resource" "rule" {
+  for_each = var.rule_ids
 
-  type                   = "Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials@2024-11-30"
+  type                   = "Microsoft.Insights/dataCollectionRules@2024-03-11"
   resource_id            = each.value
-  response_export_values = ["properties.subject"]
+  response_export_values = ["properties.dataSources", "properties.destinations"]
 }
 
-output "subjects" {
-  value = { for name, credential in data.azapi_resource.credential : name => credential.output.properties.subject }
+output "destination_workspace_ids" {
+  value = { for kind, rule in data.azapi_resource.rule : kind => [for destination in rule.output.properties.destinations.logAnalytics : lower(destination.workspaceResourceId)] }
+}
+
+output "extension_names" {
+  value = { for kind, rule in data.azapi_resource.rule : kind => sort([for extension in try(rule.output.properties.dataSources.extensions, []) : extension.extensionName]) }
+}
+
+output "extension_settings" {
+  value = { for kind, rule in data.azapi_resource.rule : kind => { for extension in try(rule.output.properties.dataSources.extensions, []) : extension.name => try(extension.extensionSettings, null) } }
 }

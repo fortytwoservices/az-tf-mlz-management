@@ -1,23 +1,23 @@
 variable "location" {
   type        = string
-  description = "Azure region of the user-assigned identity, for example `norwayeast`."
+  description = "Azure region of the workspace, for example `swedencentral`."
   nullable    = false
 }
 
 variable "name" {
   type        = string
-  description = "Name of the user-assigned identity."
+  description = "Name of the Log Analytics workspace: 4 to 63 characters, letters, digits and hyphens, starting and ending with a letter or digit."
   nullable    = false
 
   validation {
-    condition     = can(regex("^[a-zA-Z0-9][a-zA-Z0-9_-]{2,127}$", var.name))
-    error_message = "`name` must be 3 to 128 characters: letters, digits, hyphens and underscores, starting with a letter or digit."
+    condition     = can(regex("^[A-Za-z0-9][A-Za-z0-9-]{2,61}[A-Za-z0-9]$", var.name))
+    error_message = "`name` must be 4 to 63 characters: letters, digits and hyphens, starting and ending with a letter or digit."
   }
 }
 
 variable "parent_id" {
   type        = string
-  description = "Resource ID of the resource group the user-assigned identity is created in."
+  description = "Resource ID of the resource group the workspace is created in."
   nullable    = false
 
   validation {
@@ -26,103 +26,115 @@ variable "parent_id" {
   }
 }
 
-variable "federated_identity_credentials" {
-  type = map(object({
-    issuer    = string
-    subject   = string
-    audiences = optional(list(string), ["api://AzureADTokenExchange"])
-  }))
+variable "daily_quota_gb" {
+  type        = number
+  default     = null
+  description = "(Optional) Daily ingestion cap in GB. Ingestion stops for the rest of the day once it is reached. Defaults to `null`, no cap."
+
+  validation {
+    condition     = var.daily_quota_gb == null ? true : var.daily_quota_gb > 0
+    error_message = "`daily_quota_gb` must be greater than 0, or null for no cap."
+  }
+}
+
+variable "local_authentication_enabled" {
+  type        = bool
+  default     = false
+  description = "Whether the workspace accepts data sent with its shared keys (the HTTP Data Collector API, legacy agents). Defaults to `false`: only Microsoft Entra ID, which the Azure Monitor Agent and diagnostic settings use."
+  nullable    = false
+}
+
+variable "permanently_delete_on_destroy" {
+  type        = bool
+  default     = false
+  description = "Whether destroying the workspace deletes it permanently. Defaults to `false`: Azure keeps a deleted workspace and its data recoverable for 14 days and reserves its name, and creating a workspace with the same name, resource group and region in that time recovers it."
+  nullable    = false
+}
+
+variable "public_network_access_for_ingestion" {
+  type        = string
+  default     = "Enabled"
+  description = "Whether the workspace accepts ingestion over public networks: `Enabled` (default) or `Disabled` (only through an Azure Monitor Private Link Scope)."
+  nullable    = false
+
+  validation {
+    condition     = contains(["Enabled", "Disabled"], var.public_network_access_for_ingestion)
+    error_message = "`public_network_access_for_ingestion` must be `Enabled` or `Disabled`."
+  }
+}
+
+variable "public_network_access_for_query" {
+  type        = string
+  default     = "Enabled"
+  description = "Whether the workspace accepts queries over public networks: `Enabled` (default) or `Disabled` (only through an Azure Monitor Private Link Scope)."
+  nullable    = false
+
+  validation {
+    condition     = contains(["Enabled", "Disabled"], var.public_network_access_for_query)
+    error_message = "`public_network_access_for_query` must be `Enabled` or `Disabled`."
+  }
+}
+
+variable "resource_permissions_enabled" {
+  type        = bool
+  default     = true
+  description = "Whether users with access to a resource can read its logs without access to the workspace (access control mode \"Use resource or workspace permissions\", Azure's default). Defaults to `true`."
+  nullable    = false
+}
+
+variable "retention_in_days" {
+  type        = number
+  default     = 30
+  description = "Default analytics retention of the workspace's tables, in days: 30 to 730. Defaults to `30`."
+  nullable    = false
+
+  validation {
+    condition     = var.retention_in_days >= 30 && var.retention_in_days <= 730 && floor(var.retention_in_days) == var.retention_in_days
+    error_message = "`retention_in_days` must be a whole number from 30 to 730."
+  }
+}
+
+variable "data_collection_rules" {
+  type = object({
+    change_tracking = optional(object({
+      name = string
+    }))
+    vm_insights = optional(object({
+      name                               = string
+      processes_and_dependencies_enabled = optional(bool, false)
+    }))
+    defender_sql = optional(object({
+      name                           = string
+      sql_queries_collection_enabled = optional(bool, false)
+    }))
+  })
   default     = {}
   description = <<DESCRIPTION
-Federated identity credentials on the user-assigned identity, keyed by credential name (3 to 120 characters:
-letters, digits, hyphens and underscores, starting with a letter or digit). Azure allows 20 per identity.
+The data collection rules the Azure landing zone (ALZ) policies take, each created when named. They send to
+the workspace and are created in its region. Defaults to none.
 
-- `issuer` - URL of the external identity provider, for example `https://token.actions.githubusercontent.com`.
-- `subject` - Identifier of the external workload, for example `repo:<owner>/<repo>:environment:<name>`.
-- `audiences` - (Optional) Audiences accepted in the external token. Defaults to `["api://AzureADTokenExchange"]`.
+- `change_tracking` - (Optional) Change tracking and inventory for Windows and Linux (`Deploy-VM-ChangeTrack` and related policies).
+  - `name` - Name of the rule.
+- `vm_insights` - (Optional) VM insights performance counters (`Deploy-VM-Monitoring` and related policies).
+  - `name` - Name of the rule.
+  - `processes_and_dependencies_enabled` - (Optional) Also collect processes and dependencies for the VM insights Map, through the Dependency agent. Defaults to `false`, as VM insights does, to save ingestion cost.
+- `defender_sql` - (Optional) Microsoft Defender for SQL on machines (`Deploy-MDFC-DefSQL-AMA`).
+  - `name` - Name of the rule.
+  - `sql_queries_collection_enabled` - (Optional) Collect SQL queries for security research. Defaults to `false`.
 DESCRIPTION
   nullable    = false
-
-  validation {
-    condition     = length(var.federated_identity_credentials) <= 20
-    error_message = "A user-assigned identity holds at most 20 federated identity credentials."
-  }
 }
 
-variable "isolation_scope" {
-  type        = string
-  default     = "None"
-  description = "Regional restriction on assigning the identity: `None` (Azure's default) or `Regional`."
-  nullable    = false
-
-  validation {
-    condition     = contains(["None", "Regional"], var.isolation_scope)
-    error_message = "`isolation_scope` must be `None` or `Regional`."
-  }
-}
-
-variable "lock" {
+variable "user_assigned_identity" {
   type = object({
-    kind  = string
-    name  = optional(string, null)
-    notes = optional(string, null)
+    name = string
   })
   default     = null
   description = <<DESCRIPTION
-Controls the Resource Lock configuration for this resource. The following properties can be specified:
+(Optional) The user-assigned identity the Azure Monitor Agent uses (ALZ policies `Deploy-VM-ChangeTrack`,
+`Deploy-VM-Monitoring`, `Deploy-MDFC-DefSQL-AMA` and related). Created in the workspace's resource group
+and region. Defaults to `null`, none.
 
-- `kind` - (Required) The type of lock. Possible values are `\"CanNotDelete\"` and `\"ReadOnly\"`.
-- `name` - (Optional) The name of the lock. If not specified, a name will be generated based on the `kind` value. Changing this forces the creation of a new resource.
-- `notes` - (Optional) Notes about the lock. This value maps to `Microsoft.Authorization/locks.properties.notes`.
+- `name` - Name of the identity.
 DESCRIPTION
-
-  validation {
-    condition     = var.lock != null ? contains(["CanNotDelete", "ReadOnly"], var.lock.kind) : true
-    error_message = "Lock kind must be either `\"CanNotDelete\"` or `\"ReadOnly\"`."
-  }
-}
-
-variable "role_assignments" {
-  type = map(object({
-    name                                   = optional(string, null)
-    role_definition_id_or_name             = string
-    principal_id                           = string
-    description                            = optional(string, null)
-    skip_service_principal_aad_check       = optional(bool, false)
-    condition                              = optional(string, null)
-    condition_version                      = optional(string, null)
-    delegated_managed_identity_resource_id = optional(string, null)
-    principal_type                         = optional(string, null)
-  }))
-  default     = {}
-  nullable    = false
-  description = <<DESCRIPTION
-A map of role assignments to create on the user-assigned identity. The map key is deliberately arbitrary to avoid issues where map keys maybe unknown at plan time.
-
-- `name` - (Optional) The name of the role assignment. If not set, a random UUID will be generated. Changing this forces the creation of a new resource.
-- `role_definition_id_or_name` - The ID or name of the role definition to assign to the principal.
-- `principal_id` - The ID of the principal to assign the role to.
-- `description` - (Optional) The description of the role assignment.
-- `skip_service_principal_aad_check` - (Optional) If set to true, skips the Azure Active Directory check for the service principal in the tenant. Defaults to false.
-- `condition` - (Optional) The condition which will be used to scope the role assignment.
-- `condition_version` - (Optional) The version of the condition syntax. Leave as `null` if you are not using a condition, if you are then valid values are '2.0'.
-- `delegated_managed_identity_resource_id` - (Optional) The delegated Azure Resource Id which contains a Managed Identity. Changing this forces a new resource to be created. This field is only used in cross-tenant scenario.
-- `principal_type` - (Optional) The type of the `principal_id`. Possible values are `User`, `Group` and `ServicePrincipal`. It is necessary to explicitly set this attribute when creating role assignments if the principal creating the assignment is constrained by ABAC rules that filters on the PrincipalType attribute.
-
-> Note: only set `skip_service_principal_aad_check` to true if you are assigning a role to a service principal.
-DESCRIPTION
-
-  validation {
-    condition = alltrue([
-      for _, v in var.role_assignments :
-      v.delegated_managed_identity_resource_id == null || can(provider::azapi::parse_resource_id("Microsoft.ManagedIdentity/userAssignedIdentities", v.delegated_managed_identity_resource_id))
-    ])
-    error_message = "Each `role_assignments[*].delegated_managed_identity_resource_id` must be a valid user-assigned managed identity resource ID, or null."
-  }
-}
-
-variable "tags" {
-  type        = map(string)
-  default     = null
-  description = "(Optional) Tags of the resource."
 }

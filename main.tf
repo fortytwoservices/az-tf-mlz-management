@@ -1,28 +1,23 @@
-resource "azapi_resource" "this" {
-  type      = var.resource_types.managedidentity_user_assigned_identities
-  name      = var.name
-  parent_id = var.parent_id
-  location  = var.location
-  # Federated identity credentials are child resources; ARM keeps them when the identity is written
-  # without them. isolationScope is always sent: a property left out of the body is not compared by azapi
-  # (ignore_no_op_changes), so changing it back would never reach Azure.
-  body = {
-    properties = {
-      isolationScope = var.isolation_scope
-    }
-  }
-  ignore_body_changes    = length(var.ignore_body_changes.managedidentity_user_assigned_identities) > 0 ? var.ignore_body_changes.managedidentity_user_assigned_identities : null
-  response_export_values = ["properties.principalId", "properties.clientId", "properties.tenantId"]
-  retry                  = var.retry
-  tags                   = var.tags
+module "log_analytics_workspace" {
+  source = "./modules/log_analytics_workspace"
 
-  dynamic "timeouts" {
-    for_each = var.timeouts == null ? [] : [var.timeouts]
-    content {
-      create = timeouts.value.create
-      read   = timeouts.value.read
-      update = timeouts.value.update
-      delete = timeouts.value.delete
-    }
-  }
+  name                                = var.name
+  parent_id                           = var.parent_id
+  location                            = var.location
+  daily_quota_gb                      = var.daily_quota_gb
+  local_authentication_enabled        = var.local_authentication_enabled
+  permanently_delete_on_destroy       = var.permanently_delete_on_destroy
+  public_network_access_for_ingestion = var.public_network_access_for_ingestion
+  public_network_access_for_query     = var.public_network_access_for_query
+  resource_permissions_enabled        = var.resource_permissions_enabled
+  retention_in_days                   = var.retention_in_days
+  solutions                           = local.solutions
+  lock                                = var.lock
+  role_assignments                    = var.role_assignments
+  diagnostic_settings                 = var.diagnostic_settings
+  tags                                = var.tags
+  resource_types                      = var.resource_types.operationalinsights_workspaces
+  ignore_body_changes                 = var.ignore_body_changes.operationalinsights_workspaces
+  retry                               = var.retry
+  timeouts                            = var.timeouts
 }
