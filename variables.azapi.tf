@@ -30,7 +30,7 @@ Paths use dot notation, for example `properties.retentionInDays`. Individual lis
 
 - `operationalinsights_workspaces` - Slot for `modules/log_analytics_workspace`: its `operationalinsights_workspaces`, `authorization_locks`, `authorization_role_assignments`, `insights_diagnostic_settings`, `operationsmanagement_solutions`, and its slot for `modules/sentinel_onboarding` (`securityinsights_onboarding_states`). Defender plans have none: they are updated in place (`azapi_update_resource`), which has no `ignore_body_changes`.
 - `insights_data_collection_rules` - Slot for `modules/data_collection_rule`, applied to every rule: its `insights_data_collection_rules`, `authorization_locks`, `authorization_role_assignments` and `insights_diagnostic_settings`.
-- `managedidentity_user_assigned_identities` - Slot for `modules/user_assigned_identity`: its `managedidentity_user_assigned_identities`, `authorization_locks` and `authorization_role_assignments`.
+- `managedidentity_user_assigned_identities` - Slot for `az-tf-mlz-user-assigned-identity`: its `managedidentity_user_assigned_identities`, `authorization_locks` and `authorization_role_assignments`.
 DESCRIPTION
   nullable    = false
 }
@@ -68,7 +68,7 @@ Override the AzAPI `<provider>/<resource>@<api-version>` strings used by the sub
 
 - `operationalinsights_workspaces` - Slot for `modules/log_analytics_workspace` (default `Microsoft.OperationalInsights/workspaces@2025-07-01`), with its lock, role assignment, diagnostic setting and solution types, and its slot for `modules/sentinel_onboarding` (`securityinsights_onboarding_states`, default `Microsoft.SecurityInsights/onboardingStates@2025-09-01`).
 - `insights_data_collection_rules` - Slot for `modules/data_collection_rule` (default `Microsoft.Insights/dataCollectionRules@2024-03-11`), with its lock, role assignment and diagnostic setting types.
-- `managedidentity_user_assigned_identities` - Slot for `modules/user_assigned_identity` (default `Microsoft.ManagedIdentity/userAssignedIdentities@2024-11-30`), with its lock and role assignment types.
+- `managedidentity_user_assigned_identities` - Slot for `az-tf-mlz-user-assigned-identity` (default `Microsoft.ManagedIdentity/userAssignedIdentities@2024-11-30`), with its lock and role assignment types.
 - `security_pricings` - Slot for `modules/defender_plan` (default `Microsoft.Security/pricings@2024-01-01`).
 DESCRIPTION
   nullable    = false

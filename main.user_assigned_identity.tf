@@ -1,5 +1,8 @@
+# Its addresses (`azapi_resource.this`, `module.interfaces`) are those of this module's former
+# `modules/user_assigned_identity`, so an identity deployed before the switch stays in place: no `moved`
+# blocks.
 module "user_assigned_identity" {
-  source = "./modules/user_assigned_identity"
+  source = "git::https://github.com/fortytwoservices/az-tf-mlz-user-assigned-identity.git?ref=v0.1.0"
   count  = var.user_assigned_identity == null ? 0 : 1
 
   name                = var.user_assigned_identity.name
