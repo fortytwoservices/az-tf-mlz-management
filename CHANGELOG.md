@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/fortytwoservices/az-tf-mlz-management/compare/v0.1.0...v0.1.1) (2026-10-29)
+
+
+### Features
+
+* Microsoft Sentinel onboarding and Microsoft Defender for Cloud plans ([#3](https://github.com/fortytwoservices/az-tf-mlz-management/issues/3)) ([d9c51de](https://github.com/fortytwoservices/az-tf-mlz-management/commit/d9c51dea772095143028dcb96ec61bc7ccab35ab))
+
 ## 0.1.0 (2026-10-29)
 
 
